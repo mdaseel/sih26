@@ -1,0 +1,22 @@
+{
+  "input_features_enriched": [
+    "pv_bus",
+    "pv_bus_vn_kv",
+    "existing_pv_kw",
+    "new_pv_kw",
+    "total_pv_kw",
+    "existing_load_at_bus_kw",
+    "pv_penetration_ratio",
+    "transformer_association",
+    "feeder_section",
+    "transformer_sn_kva",
+    "pv_to_transformer_ratio",
+    "new_pv_to_transformer_ratio",
+    "load_to_transformer_ratio",
+    "base_voltage_pu",
+    "feeder_distance_km",
+    "upstream_r_ohm",
+    "upstream_x_ohm",
+    "upstream_z_ohm"
+  ]
+}

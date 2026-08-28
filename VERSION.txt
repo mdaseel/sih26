@@ -1,0 +1,17 @@
+SuryaGrid AI - Production Version
+==============================
+Model Version: v2.0 (Phase 4.5 Electrical Feature Enrichment)
+Model File: suryagrid_model_v2.pkl (also suryagrid_model_CURRENT.pkl and suryagrid_model.pkl [V2 default])
+Dataset Version: v2.0 enriched augmented
+Dataset File: pv_dataset_enriched_augmented.csv (also pv_dataset_CURRENT.csv, 1692 rows)
+Feature Count: 18 enriched electrical features (vs 9 in v1)
+Feature List: pv_bus, pv_bus_vn_kv, existing_pv_kw, new_pv_kw, total_pv_kw, existing_load_at_bus_kw, pv_penetration_ratio, transformer_association, feeder_section, transformer_sn_kva, pv_to_transformer_ratio, new_pv_to_transformer_ratio, load_to_transformer_ratio, base_voltage_pu, feeder_distance_km, upstream_r_ohm, upstream_x_ohm, upstream_z_ohm
+Rows: 1692 (1500 original +206 near-threshold Δ 0.035-0.065)
+Seed: 42
+Thresholds: scenario_config.json V 0.90/1.05 Δ 0.05/0.03 line 100/80 trafo 100/95
+Test Accuracy: 97.6% (RF 300 trees, 254 test)
+False SAFE: 0/97 (vs v1 2/85)
+Validation: Phase 4.5 PASS (feature_leakage_audit.md PASS, phase4_5_validation_report.md GO)
+Backup V1: suryagrid_model_v1_backup.pkl (6580278 bytes), pv_dataset_v1_backup.csv (529501 bytes) — DO NOT USE
+Date: 2026-05-13
+Status: PRODUCTION CURRENT — DO NOT USE V1 FOR APPLICATION

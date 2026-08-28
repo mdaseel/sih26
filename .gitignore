@@ -1,0 +1,33 @@
+# Environments
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Secrets — never commit
+.env
+.env.local
+.env.*.local
+*.key
+
+# Node / frontend
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & scratch
+*.log
+.pytest_cache/
+.ruff_cache/
+coverage/
+htmlcov/

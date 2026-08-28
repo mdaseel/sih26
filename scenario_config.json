@@ -1,0 +1,68 @@
+{
+  "project": "SuryaGrid AI - Phase 1 Small PV Scenario Generation",
+  "feeder_id": "IEEE_CompTestFeeder_24p9kV",
+  "base_model": {
+    "file": "build_feeder.py",
+    "network_json": "feeder_network.json",
+    "description": "Validated balanced positive-sequence approximation. 114 buses, Source 115kV, T-SUB 5MVA, 40 lines, 30 trafos incl 5 regulators fixed tap.",
+    "validation": "Source P 4.178MW vs ref 4.139MW (+0.9%), MAE 5.33%, T8 62.6%",
+    "regulator_handling": "Taps FIXED at validated values (Reg1 7.7, Reg2 12.7, Reg3 5.1, Reg4 3.0, Reg5 -5.8). No independent LDC stepping during PV scenarios."
+  },
+  "valid_pv_buses": {
+    "file": "valid_pv_buses.csv",
+    "total_buses": 114,
+    "valid_pv_buses": 71,
+    "excluded_buses": 43,
+    "eligibility_rule": "LV secondary only (0.208/0.24/0.48 kV). MV 24.9/12.47/34.5 and source 115kV excluded as non-rooftop. All 71 LV buses are secondary distribution points reachable via ideal switches from transformers T1-T24. Includes sub-buses 6201 etc.",
+    "sections": ["LV_secondary_T2_T4","Branch_701-708","Main_720-734","Main_735-750","Branch_752-765","Delta_766-772","Head_701-719 (LV only)"]
+  },
+  "pv_electrical_model": {
+    "element": "pandapower sgen (static generator) at selected LV bus",
+    "active_power": "p_mw = pv_kw / 1000. Positive generation convention (injection). Added to net.sgen.",
+    "reactive_power": "q_mvar = 0. Unity power factor (PF=1.0). Assumption: modern rooftop inverters at unity PF unless DISCOM requires VAR support. Documented; consistent across Phase1. No curtailment.",
+    "inverter_pf": 1.0,
+    "voltage_level": "Connected at LV bus vn_kv (0.208/0.24/0.48). Balanced 3-phase injection divided equally in positive-sequence model.",
+    "phase_treatment": "Balanced positive-sequence: total 3-phase PV power injected symmetrically. Per-phase imbalance not modeled (pandapower limitation). Valid for relative impact PV-BASE.",
+    "curtailment": false,
+    "notes": "PV operates at rated power regardless of local voltage (no volt-watt). Overvoltage does not curtail in Phase1; violation is flagged, not mitigated."
+  },
+  "scenario_parameters": {
+    "feeder_id": {"value": "IEEE_CompTestFeeder", "unit": "-", "reason": "Single feeder study; field reserved for multi-feeder extension", "source": "Engineering assumption"},
+    "pv_bus": {"value": "sampled from 71 valid LV buses systematic coverage", "unit": "bus_id", "reason": "Rooftop location; sample across feeder sections to test near/far from source, weak/strong buses", "source": "valid_pv_buses.csv"},
+    "existing_pv_kw": {"values": [0, 5, 10], "unit": "kW", "reason": "Existing rooftop stock. 0 = no existing PV (majority), 5-10kW = typical residential existing system. Keeps Phase1 small.", "source": "MNRE residential range 3-10kW; CEA rooftop survey"},
+    "new_pv_kw": {"values": [5, 15, 30, 50, 100, 150, 250], "unit": "kW", "reason": "New request sizes: 5kW single home, 15kW 2-3 homes, 30-50kW small commercial, 100-250kW larger commercial / high penetration stress test. Upper 250kW chosen to force overload/voltage violations on small LV trafos (30-300kVA) and test CONSTRAINED detection. Feeder total load 3.9MW, T-SUB 5MVA, so 250kW is ~6% feeder load at one bus - realistic worst case.", "source": "Engineering: based on actual trafo sn_mva 0.03-0.30 MVA LV + feeder headroom"},
+    "total_pv_kw": {"definition": "existing_pv_kw + new_pv_kw", "unit": "kW", "reason": "Total injection at bus for power flow", "source": "Derived"},
+    "pv_penetration_proxy": {"definition": "total_pv_kw / bus_existing_load_kw (where load>0)", "unit": "ratio", "reason": "Local penetration; reported for sanity but not used as label", "source": "Derived"},
+    "scenario_generation_method": "Deterministic systematic sampling for Phase1 (not random): iterate over representative buses per feeder section x PV sizes x existing. Ensures diversity, reproducible, no seed needed for Phase1. Phase2 will use seeded random sampling. De-duplicated by (pv_bus, existing, new).",
+    "target_count": "75 scenarios (demonstrates 50-100 requirement; enough for 3 label classes)"
+  },
+  "thresholds": {
+    "voltage_hard_low_pu": {"value": 0.9, "unit": "pu", "reason": "Adjusted for this feeder base already at 0.905 pu min (validated). ANSI 0.95 would flag base case itself as CONSTRAINED, obscuring PV impact. 0.90 preserves base SAFE while catching severe PV-induced undervoltage (rare). PV generally raises voltage, so low limit is guardrail.", "source": "Engineering: base feeder min 0.9059 pu from validation; ANSI ideal 0.95 unwound for conditional validation"},
+    "voltage_hard_high_pu": {"value": 1.05, "unit": "pu", "reason": "ANSI C84.1 upper limit. Same as above.", "source": "ANSI C84.1"},
+    "voltage_caution_high_pu": {"value": 1.03, "unit": "pu", "reason": "Warning band approaching limit. 1.03-1.05 triggers CAUTION if not CONSTRAINED. Captures 3% rise near limit.", "source": "Engineering: 2% margin to hard limit"},
+    "voltage_caution_low_pu": {"value": 0.9, "unit": "pu", "reason": "Disabled low-voltage caution band (set equal to hard 0.90) because base feeder min is already 0.905 pu and PV generally raises low-end voltage; low-voltage caution would incorrectly flag base as CAUTION. Low hard 0.90 remains guardrail for severe undervoltage.", "source": "Engineering: base min 0.905, PV improves low voltage"},
+    "voltage_rise_hard_pu": {"value": 0.05, "unit": "pu", "reason": "Delta pv_bus voltage >0.05 pu (5%) flagged CONSTRAINED even if absolute still <1.05. Prevents excessive local rise.", "source": "Engineering: IEEE 1547 voltage rise guideline ~3-5%"},
+    "voltage_rise_caution_pu": {"value": 0.03, "unit": "pu", "reason": "Delta 0.03-0.05 pu triggers CAUTION.", "source": "Engineering: 3% rise noticeable"},
+    "line_loading_hard_pct": {"value": 100.0, "unit": "%", "reason": "Thermal limit. pv_max_line_loading >100% = CONSTRAINED.", "source": "Equipment rating; pandapower loading_percent"},
+    "line_loading_caution_pct": {"value": 80.0, "unit": "%", "reason": "80-100% = CAUTION (approaching limit). Base feeder max line 8.77% so line SAFE baseline.", "source": "Utility practice 80% warning"},
+    "transformer_loading_hard_pct": {"value": 100.0, "unit": "%", "reason": "T-SUB and distribution trafos rating limit. >100% = CONSTRAINED.", "source": "Nameplate sn_mva"},
+    "transformer_loading_caution_pct": {"value": 95.0, "unit": "%", "reason": "Adjusted from 80 to 95 because base feeder max trafo already 92.8% (T7). 80 would make base itself CAUTION, obscuring PV-induced overload. 95 preserves base SAFE, PV-induced overload to 95-100 flagged CAUTION.", "source": "Engineering: base max 92.8% from validation"},
+    "notes": "All thresholds configurable here; code reads from this JSON. No hard-coded values in generation logic. Feeder-specific adjustment documented above; thresholds chosen so BASE case is SAFE, PV impact drives labels."
+  },
+  "reverse_power_flow": {
+    "definition": "Flag 1 if any of: source active power reverses (PV > load, source P <0) OR max line flow direction reverses vs base OR transformer flow reverses. In Phase1 simplified to: pv source p_mw < base source p_mw - threshold AND pv source p_mw < 0.5*base OR sign flip on worst line/transformer. Detailed per-element direction recorded. Not automatically CONSTRAINED unless combined with overload; treated as measurable condition. Threshold documented: reverse if pv_source_p <0 or base vs PV flow sign differs.",
+    "constrained_rule": "Reverse flow alone is NOT CONSTRAINED in Phase1 (DISCOM may allow with protection). Would become CONSTRAINED if policy says so - configurable. Currently only contributes via overload/voltage. Flag reported for analysis."
+  },
+  "label_rules": {
+    "SAFE": "No hard violated AND not in caution: 0.92<=min_volt, max_volt<=1.03, delta_rise<0.03, line<80%, trafo<95%, no reverse. BASE itself is SAFE (min 0.905 >0.90, max 1.005 <1.03, trafo 92.8<95).",
+    "CAUTION": "No hard violated, but at least one caution band: max 1.03-1.05 or min 0.90-0.92, delta 0.03-0.05, line 80-100%, trafo 95-100%, reverse detected, etc.",
+    "CONSTRAINED": "At least one hard violated: min<0.90 or max>1.05, delta>0.05, line>100%, trafo>100% (or reverse if policy). First violated reason recorded as constraint_type/reason. Deterministic electrical rules, no ML.",
+    "determinism": "Simulation produces ground truth; labels are pure functions of BASE/PV measurements vs thresholds. Same inputs -> same label."
+  },
+  "reproducibility": {
+    "phase1_method": "Deterministic enumeration; order sorted by bus_id then size",
+    "phase2_seed": "To be set in Phase2 (e.g., 42)",
+    "base_case_rule": "BASE = validated feeder + existing_pv only (new=0). PV = BASE + new_pv. Regulator taps FIXED.",
+    "delta_definition": "delta_pv_bus_voltage_pu = pv_pv_bus_voltage_pu - base_pv_bus_voltage_pu (signed). Similarly for pv_max/min etc."
+  }
+}

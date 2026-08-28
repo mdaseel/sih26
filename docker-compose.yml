@@ -1,0 +1,49 @@
+# ============================================================
+#  SolarGrid AI
+#
+#  Supabase is not run here. It is a hosted service holding the live schema and
+#  data; pointing a container at a different database would give a system that
+#  starts but knows nothing about your grid. Both services read the same .env.
+#
+#  Start:  docker compose up --build
+# ============================================================
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: solargrid-backend
+    env_file: .env
+    environment:
+      # Inside the compose network the API must bind all interfaces.
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
+      CORS_ORIGINS: http://localhost:3000
+      ARTIFACTS_DIR: /app
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Public values only. The service-role key and the database URL are
+        # never passed to the frontend build — they would end up in the bundle.
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    image: solargrid-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

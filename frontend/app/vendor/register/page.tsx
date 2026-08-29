@@ -13,7 +13,22 @@ import { supabase } from "@/lib/supabase";
  * Two steps in one page: create the account if the visitor has none, then the
  * business profile. The profile is always created PENDING — the form has no
  * status field, and the server would refuse one anyway.
+ *
+ * What is mandatory here is what a customer needs in order to use you: a way
+ * to reach you, a district you serve, and a location. An installer with no
+ * coordinates cannot be drawn on a customer's map or measured for distance,
+ * which makes the listing close to useless — so the form insists.
  */
+
+/** Marks a field the form will not submit without. */
+function Required() {
+  return (
+    <span className="ml-1 text-red-400" title="Required" aria-hidden="true">
+      *
+    </span>
+  );
+}
+
 export default function VendorRegister() {
   const router = useRouter();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
@@ -27,6 +42,8 @@ export default function VendorRegister() {
     district: "",
     state: "",
     pincode: "",
+    latitude: "",
+    longitude: "",
     registration_number: "",
     gst_number: "",
     service_areas: "",
@@ -37,6 +54,8 @@ export default function VendorRegister() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationNote, setLocationNote] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
@@ -44,6 +63,38 @@ export default function VendorRegister() {
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
+  }
+
+  /** Fills the coordinates from the browser, with the user's permission. */
+  function useMyLocation() {
+    if (!navigator.geolocation) {
+      setLocationNote("This browser cannot report a location. Enter the coordinates by hand.");
+      return;
+    }
+    setLocating(true);
+    setLocationNote(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          latitude: pos.coords.latitude.toFixed(6),
+          longitude: pos.coords.longitude.toFixed(6),
+        }));
+        setLocationNote(
+          `Filled from your device (accurate to about ${Math.round(pos.coords.accuracy)} m). Correct it if this is not your business address.`
+        );
+        setLocating(false);
+      },
+      (err) => {
+        setLocationNote(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission was declined. Enter the coordinates by hand."
+            : "Could not read a location from this device. Enter the coordinates by hand."
+        );
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10_000 }
+    );
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -79,6 +130,8 @@ export default function VendorRegister() {
         district: form.district || null,
         state: form.state || null,
         pincode: form.pincode || null,
+        latitude: form.latitude ? Number(form.latitude) : null,
+        longitude: form.longitude ? Number(form.longitude) : null,
         registration_number: form.registration_number || null,
         gst_number: form.gst_number || null,
         service_areas: form.service_areas
@@ -140,7 +193,9 @@ export default function VendorRegister() {
           <h2 className="text-sm font-semibold text-slate-200">Business</h2>
 
           <div>
-            <label className="label">Business name</label>
+            <label className="label">
+              Business name<Required />
+            </label>
             <input
               required
               className="input"
@@ -151,16 +206,25 @@ export default function VendorRegister() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">Representative</label>
+              <label className="label">
+                Representative<Required />
+              </label>
               <input
+                required
                 className="input"
                 value={form.representative_name}
                 onChange={(e) => set("representative_name", e.target.value)}
               />
             </div>
             <div>
-              <label className="label">Phone</label>
+              <label className="label">
+                Phone<Required />
+              </label>
               <input
+                required
+                inputMode="tel"
+                pattern="[0-9+\-\s]{6,20}"
+                title="Digits, spaces, + and - only"
                 className="input"
                 value={form.phone}
                 onChange={(e) => set("phone", e.target.value)}
@@ -169,8 +233,11 @@ export default function VendorRegister() {
           </div>
 
           <div>
-            <label className="label">Address</label>
+            <label className="label">
+              Address<Required />
+            </label>
             <input
+              required
               className="input"
               value={form.address_line}
               onChange={(e) => set("address_line", e.target.value)}
@@ -179,30 +246,92 @@ export default function VendorRegister() {
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
-              <label className="label">District</label>
+              <label className="label">
+                District<Required />
+              </label>
               <input
+                required
                 className="input"
                 value={form.district}
                 onChange={(e) => set("district", e.target.value)}
               />
             </div>
             <div>
-              <label className="label">State</label>
+              <label className="label">
+                State<Required />
+              </label>
               <input
+                required
                 className="input"
                 value={form.state}
                 onChange={(e) => set("state", e.target.value)}
               />
             </div>
             <div>
-              <label className="label">PIN code</label>
+              <label className="label">
+                PIN code<Required />
+              </label>
               <input
+                required
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                title="Six digits"
+                maxLength={6}
                 className="input"
                 value={form.pincode}
                 onChange={(e) => set("pincode", e.target.value)}
               />
             </div>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="label">
+                Latitude<Required />
+              </label>
+              <input
+                required
+                type="number"
+                step="any"
+                min={-90}
+                max={90}
+                placeholder="e.g. 11.01684"
+                className="input"
+                value={form.latitude}
+                onChange={(e) => set("latitude", e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">
+                Longitude<Required />
+              </label>
+              <input
+                required
+                type="number"
+                step="any"
+                min={-180}
+                max={180}
+                placeholder="e.g. 76.95584"
+                className="input"
+                value={form.longitude}
+                onChange={(e) => set("longitude", e.target.value)}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={useMyLocation}
+                disabled={locating}
+                className="btn-ghost w-full"
+              >
+                {locating ? "Locating…" : "Use my location"}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500">
+            {locationNote ??
+              "Customers find you on a map and are shown how far away you are. Without coordinates you appear in the list but nowhere on the map."}
+          </p>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -224,8 +353,11 @@ export default function VendorRegister() {
           </div>
 
           <div>
-            <label className="label">Service areas (comma separated)</label>
+            <label className="label">
+              Service areas (comma separated)<Required />
+            </label>
             <input
+              required
               className="input"
               placeholder="Demo District, Demo North"
               value={form.service_areas}

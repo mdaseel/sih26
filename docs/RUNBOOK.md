@@ -4,7 +4,7 @@ Everything below was run on this machine. Paths use the Windows venv
 (`.venv/Scripts/python.exe`); on Linux or macOS use `.venv/bin/python`.
 
 ---
-
+## C:\sih26\suryaghar\.claude\worktrees\project-code-analysis-109c04
 ## 1. Start everything
 
 Two processes. There is **no separate ML service** — the model is loaded into
@@ -19,7 +19,7 @@ flow and the API together.
 
 ```bash
 cd frontend && npm run dev
-```
+```C:\sih26\suryaghar\.claude\worktrees\project-code-analysis-109c04
 
 Use `npm run dev` while testing — `npm start` serves a **pre-built** bundle and
 will keep showing old code until you re-run `npm run build`.

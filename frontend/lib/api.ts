@@ -2,9 +2,11 @@
 
 import { supabase } from "@/lib/supabase";
 import type {
+  ApplicationTimeline,
   Assessment,
   CFAEstimate,
   Bus,
+  CitizenMapData,
   GridSummary,
   DecisionResult,
   DiscomApplication,
@@ -139,6 +141,16 @@ export const api = {
       latest_assessment: Record<string, unknown> | null;
     }>(`/api/applications/${id}`),
 
+  /**
+   * Every status the application has actually held, oldest first.
+   *
+   * Written by a database trigger on each transition, so this is a record of
+   * what happened. A stage with no row here is a stage that has not been
+   * reached — the tracker must show it as pending, never as done.
+   */
+  applicationTimeline: (id: string) =>
+    request<ApplicationTimeline>(`/api/applications/${id}/timeline`),
+
   /** Reads the stored assessment. Does not re-simulate. */
   storedAssessment: (id: string) =>
     request<Assessment>(`/api/applications/${id}/assessment`),
@@ -149,6 +161,13 @@ export const api = {
 
   /** Everything the geographic map draws. RLS scopes the application pins. */
   map: () => request<MapData>("/api/map"),
+
+  /**
+   * The citizen's own map: their sites, verified installers, and the route to
+   * any installer who has accepted a booking. No feeder assets — those belong
+   * to the DISCOM view.
+   */
+  citizenMap: () => request<CitizenMapData>("/api/citizen/map"),
 
   /** Precomputed hosting capacity for every eligible bus. */
   hostingCapacity: () =>

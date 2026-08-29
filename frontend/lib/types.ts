@@ -108,8 +108,11 @@ export interface SolarApplication {
   district: string | null;
   state: string | null;
   pincode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   consumer_number: string | null;
   connection_type: string | null;
+  /** Derived by the backend from the connection point — never asked of the applicant. */
   sanctioned_load_kw: number | null;
   monthly_consumption_kwh: number | null;
   roof_area_sqm: number | null;
@@ -307,6 +310,74 @@ export interface MapData {
   anchor_note: string;
   data_class: string;
   liveness: string;
+}
+
+// ---------------------------------------------------------------
+//  Citizen map — installers and the way to them, not the feeder
+// ---------------------------------------------------------------
+
+export interface CitizenMapApplication {
+  id: string;
+  application_number: string;
+  address_line: string | null;
+  district: string | null;
+  state: string | null;
+  pincode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  status: ApplicationStatus;
+  new_pv_kw: number;
+  total_pv_kw: number;
+  created_at: string;
+}
+
+export interface CitizenMapVendor {
+  id: string;
+  business_name: string;
+  representative_name: string | null;
+  phone: string | null;
+  email: string | null;
+  address_line: string | null;
+  district: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  rating: number | null;
+  completed_installations: number | null;
+  installation_capacity_kw: number | null;
+  years_experience: number | null;
+  service_areas: string[];
+  verified: boolean;
+  verified_at: string | null;
+  /** This installer accepted one of your bookings. */
+  engaged: boolean;
+  /** You asked; they have not answered yet. */
+  requested: boolean;
+}
+
+export interface CitizenMapRoute extends RouteDistance {
+  appointment_id: string;
+  application_id: string;
+  application_number: string;
+  vendor_id: string;
+  vendor_name: string;
+  appointment_status: AppointmentStatusValue;
+  scheduled_at: string;
+}
+
+export interface CitizenMapData {
+  applications: CitizenMapApplication[];
+  located_applications: number;
+  vendors: CitizenMapVendor[];
+  routes: CitizenMapRoute[];
+  routing: { provider: string; returns_real_routes: boolean; integration_point: string };
+  distance_note: string;
+  location_note: string;
+}
+
+export interface ApplicationTimeline {
+  application_id: string;
+  history: StatusHistoryRow[];
 }
 
 export interface HostingCapacityRow {
@@ -508,6 +579,8 @@ export interface RouteDistance {
   method: string;
   is_route: boolean;
   note: string;
+  /** [[lon, lat], ...]. A real road path when is_route, otherwise the two ends joined. */
+  geometry: [number, number][] | null;
 }
 
 export interface PublicVendor {

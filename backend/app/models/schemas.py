@@ -18,7 +18,15 @@ from app.models.enums import ApplicationStatus, ConstraintKind, RiskLevel
 #  Requests
 # ============================================================
 class ApplicationCreate(BaseModel):
-    """A citizen's connection request."""
+    """A citizen's connection request.
+
+    Note what is absent: sanctioned_load_kw. That is a DISCOM-side record of
+    the load sanctioned on the service connection, and an applicant generally
+    does not have it to hand -- asking for it invites a guess, and a guessed
+    number would then travel to the DISCOM looking like a declaration. The
+    backend fills it from the connection point instead; see
+    routes.create_application.
+    """
 
     applicant_name: str = Field(min_length=1, max_length=200)
     contact_phone: str | None = Field(default=None, max_length=20)
@@ -31,7 +39,6 @@ class ApplicationCreate(BaseModel):
 
     consumer_number: str | None = None
     connection_type: str | None = None
-    sanctioned_load_kw: float | None = Field(default=None, ge=0, le=10000)
     monthly_consumption_kwh: float | None = Field(default=None, ge=0)
 
     roof_area_sqm: float | None = Field(default=None, ge=0)

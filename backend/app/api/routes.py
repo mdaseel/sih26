@@ -43,6 +43,20 @@ from app.services.topology import get_topology_service
 
 router = APIRouter(prefix="/api")
 
+# Statuses an application can still be moved out of by a re-assessment. Once
+# the DISCOM has decided, or a vendor is engaged, the assessment is evidence
+# rather than a lever — running it again must not rewind the case.
+PRE_DECISION_STATUSES = frozenset(
+    {
+        ApplicationStatus.DRAFT.value,
+        ApplicationStatus.SUBMITTED.value,
+        ApplicationStatus.ASSESSING.value,
+        ApplicationStatus.ASSESSED.value,
+        ApplicationStatus.UNDER_DISCOM_REVIEW.value,
+        ApplicationStatus.ENGINEERING_REVIEW.value,
+    }
+)
+
 
 # ============================================================
 #  Core engineering pipeline — the single source of truth
@@ -380,7 +394,7 @@ def create_application(
 ) -> dict[str, Any]:
     grid = get_grid_asset_service()
     try:
-        grid.get(payload.pv_bus)
+        bus = grid.get(payload.pv_bus)
     except UnknownBusError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except IneligibleBusError as exc:
@@ -388,6 +402,17 @@ def create_application(
 
     row = payload.model_dump(exclude={"submit"})
     row["applicant_id"] = user.id
+
+    # The load figure comes from the grid, not from the applicant.
+    #
+    # A citizen is not expected to know the load sanctioned on their service
+    # connection, so the form does not ask. The network model does hold a
+    # connected load for the chosen connection point, and that is what travels
+    # with the application to the DISCOM. It is the model's figure, measured
+    # from the same feeder data the power flow runs on -- not a claim about
+    # what the DISCOM has sanctioned, which remains theirs to assert and
+    # overrides this the moment they say otherwise.
+    row["sanctioned_load_kw"] = round(bus.existing_load_kw, 3)
     row["status"] = (
         ApplicationStatus.SUBMITTED.value if payload.submit else ApplicationStatus.DRAFT.value
     )
@@ -471,6 +496,35 @@ def _stored_assessment(application_id: str) -> AssessmentOut | None:
     )
 
 
+@router.get("/applications/{application_id}/timeline", tags=["applications"])
+def get_application_timeline(
+    application_id: str, user: CurrentUser = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Every status this application has actually held, oldest first.
+
+    These rows are written by a database trigger on every status change, so the
+    timeline is a record of what happened rather than a story reconstructed
+    afterwards from the current state. A stage the application never reached
+    has no row here, and the UI must not invent one.
+
+    Read with the caller's own token: RLS returns history only for their own
+    application (or any of them, for a DISCOM reviewer).
+    """
+    if db.get_application(user.access_token, application_id) is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    rows = (
+        db.as_user(user.access_token)
+        .table("application_status_history")
+        .select("id,from_status,to_status,note,created_at")
+        .eq("application_id", application_id)
+        .order("created_at")
+        .execute()
+    ).data or []
+
+    return {"application_id": application_id, "history": rows}
+
+
 @router.get("/applications/{application_id}/assessment", tags=["assessment"])
 def get_stored_assessment(
     application_id: str, user: CurrentUser = Depends(get_current_user)
@@ -507,6 +561,7 @@ def assess_application(
     if app_row["applicant_id"] != user.id and not user.is_discom:
         raise HTTPException(status_code=403, detail="Not permitted to assess this application")
 
+    previous_status = app_row["status"]
     db.set_application_status(application_id, ApplicationStatus.ASSESSING.value)
 
     try:
@@ -516,7 +571,7 @@ def assess_application(
             float(app_row["new_pv_kw"]),
         )
     except HTTPException:
-        db.set_application_status(application_id, ApplicationStatus.SUBMITTED.value)
+        db.set_application_status(application_id, previous_status)
         raise
 
     metrics = result["_metrics_obj"]
@@ -530,7 +585,21 @@ def assess_application(
     }
     risk_row = db.insert_risk_assessment(risk_payload)
 
-    db.set_application_status(application_id, ApplicationStatus.ASSESSED.value)
+    # Where the application lands afterwards.
+    #
+    # Being assessed is an internal milestone, not an outcome: the screening is
+    # done but nobody has decided anything, and an applicant reading "assessed"
+    # reasonably thinks their request has been dealt with. So an application
+    # that was still waiting moves to UNDER_DISCOM_REVIEW -- it is with the
+    # DISCOM, which is the true state -- and the DISCOM's own decision is what
+    # moves it to APPROVED or REJECTED.
+    #
+    # An application that had already been decided keeps its decision. Re-running
+    # the numbers is not a way to reopen a determination.
+    if previous_status in PRE_DECISION_STATUSES:
+        db.set_application_status(application_id, ApplicationStatus.UNDER_DISCOM_REVIEW.value)
+    else:
+        db.set_application_status(application_id, previous_status)
     db.audit(
         action="application.assess",
         entity_type="risk_assessments",

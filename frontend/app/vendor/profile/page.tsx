@@ -25,6 +25,8 @@ export default function VendorProfilePage() {
     district: "",
     state: "",
     pincode: "",
+    latitude: "",
+    longitude: "",
     service_areas: "",
     installation_capacity_kw: "",
     years_experience: "",
@@ -43,6 +45,10 @@ export default function VendorProfilePage() {
         district: p.vendor.district ?? "",
         state: p.vendor.state ?? "",
         pincode: (p.vendor as unknown as { pincode?: string }).pincode ?? "",
+        latitude:
+          (p.vendor as unknown as { latitude?: number }).latitude?.toString() ?? "",
+        longitude:
+          (p.vendor as unknown as { longitude?: number }).longitude?.toString() ?? "",
         service_areas: (p.vendor.service_areas ?? []).join(", "),
         installation_capacity_kw: p.vendor.installation_capacity_kw?.toString() ?? "",
         years_experience: p.vendor.years_experience?.toString() ?? "",
@@ -69,6 +75,8 @@ export default function VendorProfilePage() {
         district: form.district || null,
         state: form.state || null,
         pincode: form.pincode || null,
+        latitude: form.latitude ? Number(form.latitude) : null,
+        longitude: form.longitude ? Number(form.longitude) : null,
         service_areas: form.service_areas
           ? form.service_areas.split(",").map((s) => s.trim()).filter(Boolean)
           : null,
@@ -150,16 +158,23 @@ export default function VendorProfilePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label">Representative</label>
+            <label className="label">
+              Representative<Required />
+            </label>
             <input
+              required
               className="input"
               value={form.representative_name}
               onChange={(e) => set("representative_name", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">Phone</label>
+            <label className="label">
+              Phone<Required />
+            </label>
             <input
+              required
+              inputMode="tel"
               className="input"
               value={form.phone}
               onChange={(e) => set("phone", e.target.value)}
@@ -168,8 +183,11 @@ export default function VendorProfilePage() {
         </div>
 
         <div>
-          <label className="label">Address</label>
+          <label className="label">
+            Address<Required />
+          </label>
           <input
+            required
             className="input"
             value={form.address_line}
             onChange={(e) => set("address_line", e.target.value)}
@@ -178,24 +196,37 @@ export default function VendorProfilePage() {
 
         <div className="grid gap-4 sm:grid-cols-3">
           <div>
-            <label className="label">District</label>
+            <label className="label">
+              District<Required />
+            </label>
             <input
+              required
               className="input"
               value={form.district}
               onChange={(e) => set("district", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">State</label>
+            <label className="label">
+              State<Required />
+            </label>
             <input
+              required
               className="input"
               value={form.state}
               onChange={(e) => set("state", e.target.value)}
             />
           </div>
           <div>
-            <label className="label">PIN code</label>
+            <label className="label">
+              PIN code<Required />
+            </label>
             <input
+              required
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              title="Six digits"
+              maxLength={6}
               className="input"
               value={form.pincode}
               onChange={(e) => set("pincode", e.target.value)}
@@ -203,9 +234,47 @@ export default function VendorProfilePage() {
           </div>
         </div>
 
+        {/* An installer with no coordinates cannot be placed on a customer's
+            map or measured for distance, so the listing barely works. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="label">
+              Latitude<Required />
+            </label>
+            <input
+              required
+              type="number"
+              step="any"
+              min={-90}
+              max={90}
+              className="input"
+              value={form.latitude}
+              onChange={(e) => set("latitude", e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">
+              Longitude<Required />
+            </label>
+            <input
+              required
+              type="number"
+              step="any"
+              min={-180}
+              max={180}
+              className="input"
+              value={form.longitude}
+              onChange={(e) => set("longitude", e.target.value)}
+            />
+          </div>
+        </div>
+
         <div>
-          <label className="label">Service areas (comma separated)</label>
+          <label className="label">
+            Service areas (comma separated)<Required />
+          </label>
           <input
+            required
             className="input"
             value={form.service_areas}
             onChange={(e) => set("service_areas", e.target.value)}
@@ -313,6 +382,15 @@ export default function VendorProfilePage() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Marks a field the form will not submit without. */
+function Required() {
+  return (
+    <span className="ml-1 text-red-400" title="Required" aria-hidden="true">
+      *
+    </span>
   );
 }
 

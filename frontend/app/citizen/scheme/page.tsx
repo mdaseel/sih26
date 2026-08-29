@@ -6,12 +6,23 @@ import { api, ApiError } from "@/lib/api";
 import type { CFAEstimate, SchemeOverview } from "@/lib/types";
 
 /**
- * PM Surya Ghar information and an indicative CFA estimate.
+ * PM Surya Ghar scheme information and an indicative CFA estimate.
  *
  * Every figure and every sentence of policy on this page comes from the
  * scheme_config table, not from code. Where that configuration has not been
- * checked against the official portal, the page says so loudly rather than
- * letting a placeholder pass as policy.
+ * verified, the page says so loudly rather than letting a placeholder pass as
+ * policy.
+ *
+ * Scope: the scheme itself — what it covers, who is eligible, how the process
+ * runs, what the assistance is worth. Deliberately not the government portal:
+ * no outbound links to it, no instructions for using it, no description of its
+ * features. Directing people off to a site we do not control, and cannot keep
+ * accurate, is a liability this page has no reason to carry.
+ *
+ * The one thing that stays is the statement that SolarGrid AI is not that
+ * portal and cannot sanction anything. Removing it would not reduce exposure,
+ * it would create it: a user who mistakes this for the government service is
+ * exactly the problem worth preventing.
  */
 export default function SchemePage() {
   const [scheme, setScheme] = useState<SchemeOverview | null>(null);
@@ -61,23 +72,16 @@ export default function SchemePage() {
 
       {/* This must be impossible to miss. */}
       <div className="rounded-lg border border-amber-800 bg-amber-950/40 p-4 text-sm text-amber-100">
-        <b>SolarGrid AI is not the government portal.</b>{" "}
-        {scheme.not_official_portal.replace("SolarGrid AI is not the official PM Surya Ghar portal and cannot", "It cannot")}{" "}
-        <a
-          href={scheme.overview.official_portal_url}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="underline hover:text-white"
-        >
-          Go to the official portal →
-        </a>
+        <b>SolarGrid AI is not a government service.</b> It cannot register, sanction or
+        disburse a subsidy. What follows is scheme information and an indicative
+        estimate, to help you understand what you may be entitled to.
       </div>
 
       {unverified && (
         <div className="rounded-lg border border-red-900 bg-red-950/40 p-4 text-sm text-red-200">
           <b>Subsidy figures are unverified placeholders.</b>{" "}
           {scheme.cfa_rules.verification_note} Do not quote these numbers to anyone
-          until they have been checked against the official portal.
+          until they have been verified against the rules in force.
         </div>
       )}
 
@@ -111,10 +115,10 @@ export default function SchemePage() {
       <div className="card">
         <h2 className="mb-1 text-sm font-semibold text-slate-200">How the process works</h2>
         <p className="mb-4 text-xs text-slate-500">
-          Steps marked <span className="text-sky-400">in SolarGrid</span> happen here;
-          the others happen on the official portal.
+          Steps marked <span className="text-sky-400">in SolarGrid</span> are the ones
+          you can carry out here.
         </p>
-        <ol className="space-y-3">
+        <ol className="scroll-pane max-h-96 space-y-3 pr-2">
           {scheme.process_steps.map((s) => (
             <li key={s.step} className="flex gap-3">
               <span
@@ -241,31 +245,12 @@ export default function SchemePage() {
             )}
 
             <p className="rounded-lg border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
-              {estimate.disclaimer} {estimate.not_official_portal} The subsidy actually
-              sanctioned depends on the capacity commissioned and the rules in force at
-              the time, decided by the government.
+              {estimate.disclaimer} SolarGrid AI cannot sanction or disburse a subsidy.
+              The amount actually sanctioned depends on the capacity commissioned and
+              the rules in force at the time, decided by the government.
             </p>
           </div>
         )}
-      </div>
-
-      {/* ---- official links ---- */}
-      <div className="card">
-        <h2 className="mb-3 text-sm font-semibold text-slate-200">Official sources</h2>
-        <div className="space-y-2">
-          {scheme.official_links.map((l) => (
-            <a
-              key={l.url}
-              href={l.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="block rounded-lg border border-slate-800 bg-slate-950/40 p-3 transition hover:border-slate-700"
-            >
-              <div className="text-sm text-sky-400">{l.label} ↗</div>
-              <div className="mt-0.5 text-xs text-slate-500">{l.detail}</div>
-            </a>
-          ))}
-        </div>
       </div>
 
       <p className="text-xs text-slate-600">

@@ -104,8 +104,11 @@ ROWS = [
             {
                 "step": 2,
                 "actor": "Citizen",
-                "title": "Register on the official portal",
-                "detail": "Create your application on the PM Surya Ghar portal.",
+                "title": "Register with the national scheme",
+                "detail": (
+                    "Scheme registration is made with the government, outside "
+                    "SolarGrid AI. Nothing here registers you for the subsidy."
+                ),
                 "in_this_app": False,
             },
             {
@@ -134,8 +137,8 @@ ROWS = [
                 "actor": "Government",
                 "title": "Subsidy disbursed",
                 "detail": (
-                    "After verification, the Central Financial Assistance is credited to "
-                    "your bank account through the official portal."
+                    "After verification, the Central Financial Assistance is credited "
+                    "to your bank account by the government."
                 ),
                 "in_this_app": False,
             },
@@ -145,7 +148,7 @@ ROWS = [
         "config_key": "cfa_slabs",
         "description": (
             "Central Financial Assistance slabs. PLACEHOLDER VALUES — verify against "
-            "the official portal before relying on any figure."
+            "the scheme rules in force before relying on any figure."
         ),
         "source_url": OFFICIAL_PORTAL,
         "config_value": {
@@ -162,7 +165,7 @@ ROWS = [
             "verification_required": True,
             "verification_note": (
                 "These rates are a seeded placeholder and have NOT been verified against "
-                "the official portal. Check the current scheme parameters, then set "
+                "the scheme rules in force. Check the current scheme parameters, then set "
                 "verification_required to false with the date checked."
             ),
             "verified_on": None,

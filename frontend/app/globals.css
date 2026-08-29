@@ -47,4 +47,115 @@ body {
   .metric-label {
     @apply text-xs text-slate-400;
   }
+
+  /* A list that would otherwise grow without limit. The cap is on the list,
+     never on the card, so headers and totals stay put while the rows move. */
+  .scroll-pane {
+    @apply overflow-y-auto pr-1;
+    scrollbar-width: thin;
+    scrollbar-color: theme("colors.slate.700") transparent;
+  }
+
+  .scroll-pane::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scroll-pane::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scroll-pane::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-700;
+  }
+
+  .scroll-pane::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-600;
+  }
+}
+
+/* ============================================================
+   Application tracker
+   ============================================================
+   Motion here carries one meaning only: this stage is happening now. A
+   completed stage is still, a future stage is still. Nothing animates to
+   suggest progress that has not been recorded. */
+
+@keyframes track-flow {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes track-halo {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+@keyframes track-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The rail segment the application is currently travelling along. */
+.track-live {
+  background-image: linear-gradient(
+    90deg,
+    theme("colors.sky.900") 0%,
+    theme("colors.sky.400") 50%,
+    theme("colors.sky.900") 100%
+  );
+  background-size: 200% 100%;
+  animation: track-flow 1.8s linear infinite;
+}
+
+.track-live-v {
+  background-image: linear-gradient(
+    180deg,
+    theme("colors.sky.900") 0%,
+    theme("colors.sky.400") 50%,
+    theme("colors.sky.900") 100%
+  );
+  background-size: 100% 200%;
+  animation: track-flow 1.8s linear infinite;
+}
+
+.track-halo {
+  animation: track-halo 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.track-enter {
+  animation: track-enter 0.35s ease-out both;
+}
+
+/* Someone who has asked for less motion gets none of it. The tracker still
+   reads correctly: the current stage keeps its colour and its label. */
+@media (prefers-reduced-motion: reduce) {
+  .track-live,
+  .track-live-v,
+  .track-halo,
+  .track-enter {
+    animation: none;
+  }
+
+  .track-live,
+  .track-live-v {
+    @apply bg-sky-500;
+    background-image: none;
+  }
 }

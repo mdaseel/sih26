@@ -107,6 +107,23 @@ def _client_key(request: Request) -> tuple[str, bool]:
     return f"ip:{ip}", False
 
 
+def _is_cors_preflight(request: Request) -> bool:
+    """A browser asking permission, not the application being called.
+
+    Preflights are protocol overhead: the browser strips Authorization from
+    them, so they look anonymous and land in the (deliberately small) IP
+    bucket. A dashboard that touches seven endpoints spends seven preflights
+    before it makes a single real call, which exhausted that bucket and then
+    429'd the preflight itself -- and a rejected preflight blocks the real
+    request outright, so the page fails with a CORS error rather than anything
+    the frontend can report. CORSMiddleware answers these; no route runs.
+    """
+    return (
+        request.method == "OPTIONS"
+        and "access-control-request-method" in request.headers
+    )
+
+
 def _limit_for(path: str, authenticated: bool) -> Limit:
     if any(path.startswith(p) for p in EXPENSIVE_PREFIXES) or any(
         path.endswith(s) for s in EXPENSIVE_SUFFIXES
@@ -124,6 +141,10 @@ def install_security(app: FastAPI) -> None:
     @app.middleware("http")
     async def rate_limit_and_headers(request: Request, call_next: Callable):
         path = request.url.path
+
+        # Never charge a caller for the browser's permission check.
+        if _is_cors_preflight(request):
+            return await call_next(request)
 
         # Health must answer even under a flood, so a monitor can still see the
         # service is alive rather than being throttled into looking dead.

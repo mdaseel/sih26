@@ -43,6 +43,12 @@ class RouteResult:
 
     distance_km means different things depending on `is_route`, which is why
     the flag travels with the number instead of being inferred later.
+
+    `geometry` is [[lon, lat], ...] for drawing. It follows the same rule as
+    the distance: with a real provider it is the road the vehicle would take,
+    and without one it is just the two endpoints joined -- a connector, not a
+    path anything could drive. `is_route` says which, and any map drawing this
+    must label it accordingly.
     """
 
     distance_km: float
@@ -50,6 +56,7 @@ class RouteResult:
     method: str
     is_route: bool
     note: str
+    geometry: list[list[float]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)
@@ -89,6 +96,7 @@ class StraightLineProvider:
                 "Straight-line distance. Actual travel distance is longer and is not "
                 "known — no routing provider is configured."
             ),
+            geometry=[[from_lon, from_lat], [to_lon, to_lat]],
         )
 
 
@@ -109,19 +117,21 @@ class OSRMProvider:
         url = (
             f"{self._base}/route/v1/driving/"
             f"{from_lon},{from_lat};{to_lon},{to_lat}"
-            "?overview=false&alternatives=false"
+            "?overview=simplified&geometries=geojson&alternatives=false"
         )
         try:
             response = httpx.get(url, timeout=self._timeout)
             response.raise_for_status()
             payload = response.json()
             route = payload["routes"][0]
+            coordinates = (route.get("geometry") or {}).get("coordinates")
             return RouteResult(
                 distance_km=round(route["distance"] / 1000.0, 3),
                 duration_minutes=round(route["duration"] / 60.0, 1),
                 method=self.name,
                 is_route=True,
                 note="Road distance and drive time from the configured routing service.",
+                geometry=coordinates if coordinates else None,
             )
         except Exception as exc:  # noqa: BLE001 - any failure degrades, never crashes
             # Degrade to straight line, but say so. Silently substituting a
@@ -136,6 +146,7 @@ class OSRMProvider:
                     "Routing service unavailable, so this is straight-line distance, "
                     f"not a route ({type(exc).__name__})."
                 ),
+                geometry=fallback.geometry,
             )
 
 

@@ -72,6 +72,15 @@ app = FastAPI(
 )
 
 settings = get_settings()
+
+# Order matters, and it is the reverse of the reading order: the LAST
+# middleware added is the outermost one. CORS must be outside the rate limiter
+# so that a 429 -- which the limiter returns without ever calling downstream --
+# still carries Access-Control-Allow-Origin. Otherwise the browser discards it
+# as a CORS failure and the frontend cannot tell "slow down" from "backend is
+# broken".
+install_security(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -79,8 +88,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-install_security(app)
 
 app.include_router(router)
 app.include_router(discom_router)

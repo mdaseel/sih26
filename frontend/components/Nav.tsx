@@ -6,11 +6,14 @@ import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
+// No Grid twin here. Exploring the feeder is a DISCOM activity; for a citizen
+// the twin is only meaningful as an explanation of their own decided
+// application, which is where it now appears. The explorer remains at
+// /discom/grid-twin for the role that reads it.
 const LINKS = [
   { href: "/citizen/dashboard", label: "Dashboard" },
   { href: "/citizen/applications", label: "My applications" },
   { href: "/citizen/applications/new", label: "New application" },
-  { href: "/citizen/twin", label: "Grid twin" },
   { href: "/citizen/map", label: "Map" },
   { href: "/citizen/vendors", label: "Installers" },
   { href: "/citizen/scheme", label: "PM Surya Ghar" },

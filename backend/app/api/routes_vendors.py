@@ -100,6 +100,143 @@ def routing_status(user: CurrentUser = Depends(get_current_user)) -> dict[str, A
 
 
 # ============================================================
+#  Citizen map
+# ============================================================
+# An accepted booking. A requested one is a customer's intention, not an
+# arrangement, so the map does not draw a route for it yet.
+ENGAGED_APPOINTMENT_STATUSES = ("CONFIRMED", "RESCHEDULED", "COMPLETED")
+
+
+@router.get("/citizen/map")
+def citizen_map(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """What a citizen needs on a map: their sites, their installers, the way between.
+
+    Deliberately not the feeder. Buses, transformers and line loadings are the
+    DISCOM's instrument panel; to a householder they are noise around the one
+    question they have, which is who is coming and from where. That view still
+    exists in full at /api/map for the roles that need it.
+
+    Only APPROVED and active vendors appear. A vendor whose application the
+    citizen has actually engaged is marked, and the route is drawn only once
+    that vendor has accepted -- an unanswered request is not an appointment.
+    """
+    applications = [
+        {
+            "id": a["id"],
+            "application_number": a["application_number"],
+            "address_line": a.get("address_line"),
+            "district": a.get("district"),
+            "state": a.get("state"),
+            "pincode": a.get("pincode"),
+            "latitude": a.get("latitude"),
+            "longitude": a.get("longitude"),
+            "status": a["status"],
+            "new_pv_kw": float(a["new_pv_kw"]),
+            "total_pv_kw": float(a["total_pv_kw"]),
+            "created_at": a["created_at"],
+        }
+        for a in db.list_applications_for_user(user.access_token)
+    ]
+    located = [a for a in applications if a["latitude"] is not None and a["longitude"] is not None]
+
+    # RLS scopes these to the caller's own bookings.
+    appointments = (
+        db.as_user(user.access_token)
+        .table("appointments")
+        .select("id,application_id,vendor_id,status,scheduled_at,purpose,created_at")
+        .order("created_at", desc=True)
+        .execute()
+    ).data or []
+
+    engaged_vendor_ids = {
+        a["vendor_id"] for a in appointments if a["status"] in ENGAGED_APPOINTMENT_STATUSES
+    }
+    requested_vendor_ids = {a["vendor_id"] for a in appointments} - engaged_vendor_ids
+
+    service = get_vendor_service()
+    routing = get_routing_service()
+
+    vendors: list[dict[str, Any]] = []
+    for v in service.public_vendors():
+        engaged = v["id"] in engaged_vendor_ids
+        vendors.append(
+            {
+                "id": v["id"],
+                "business_name": v["business_name"],
+                "representative_name": v.get("representative_name"),
+                "phone": v.get("phone"),
+                "email": v.get("email"),
+                "address_line": v.get("address_line"),
+                "district": v.get("district"),
+                "state": v.get("state"),
+                "latitude": v.get("latitude"),
+                "longitude": v.get("longitude"),
+                "rating": v.get("rating"),
+                "completed_installations": v.get("completed_installations"),
+                "installation_capacity_kw": v.get("installation_capacity_kw"),
+                "years_experience": v.get("years_experience"),
+                "service_areas": v.get("service_areas") or [],
+                "verified": True,  # public_vendors() returns APPROVED + active only
+                "verified_at": v.get("verified_at"),
+                "engaged": engaged,
+                "requested": v["id"] in requested_vendor_ids,
+            }
+        )
+
+    # One route per accepted booking whose two ends are both located.
+    vendor_by_id = {v["id"]: v for v in vendors}
+    app_by_id = {a["id"]: a for a in located}
+
+    routes: list[dict[str, Any]] = []
+    for appointment in appointments:
+        if appointment["status"] not in ENGAGED_APPOINTMENT_STATUSES:
+            continue
+        application = app_by_id.get(appointment["application_id"])
+        vendor = vendor_by_id.get(appointment["vendor_id"])
+        if not application or not vendor:
+            continue
+
+        route = routing.distance(
+            vendor["latitude"], vendor["longitude"],
+            application["latitude"], application["longitude"],
+        )
+        if route is None:
+            continue
+
+        routes.append(
+            {
+                "appointment_id": appointment["id"],
+                "application_id": application["id"],
+                "application_number": application["application_number"],
+                "vendor_id": vendor["id"],
+                "vendor_name": vendor["business_name"],
+                "appointment_status": appointment["status"],
+                "scheduled_at": appointment["scheduled_at"],
+                **route.as_dict(),
+            }
+        )
+
+    return {
+        "applications": applications,
+        "located_applications": len(located),
+        "vendors": vendors,
+        "routes": routes,
+        "routing": routing.describe(),
+        "distance_note": (
+            "Distances and drawn paths are road routes from the configured routing "
+            "provider."
+            if routing.routing_available
+            else "No routing provider is configured, so a drawn path is a direct "
+            "connector and its distance is straight-line — the real journey is longer."
+        ),
+        "location_note": (
+            "Your sites are placed from the coordinates on each application. An "
+            "application without coordinates cannot be placed and is listed instead."
+        ),
+    }
+
+
+# ============================================================
 #  Vendor self-registration
 # ============================================================
 @router.post("/vendors/register", status_code=201)

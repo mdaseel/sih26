@@ -47,7 +47,9 @@ export function VendorList({ data }: { data: VendorDiscovery }) {
         </div>
       )}
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      {/* Capped: the list grows with every approved installer, and an
+          unbounded one would push the notes below it off the page entirely. */}
+      <div className="scroll-pane grid max-h-[42rem] gap-3 lg:grid-cols-2">
         {data.vendors.map((v) => (
           <VendorCard key={v.id} vendor={v} routed={routed} />
         ))}

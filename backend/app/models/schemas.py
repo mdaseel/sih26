@@ -50,6 +50,8 @@ class ApplicationCreate(BaseModel):
     existing_pv_kw: float = Field(default=0.0, ge=0, le=5000)
     new_pv_kw: float = Field(gt=0, le=5000)
 
+    solar_placement: dict[str, Any] | None = Field(default=None, description="Interactive 3D rooftop solar placement geometry and suitability metadata")
+
     submit: bool = Field(default=True, description="Submit immediately, or keep as DRAFT")
 
     @field_validator("pv_bus")
@@ -179,6 +181,7 @@ class ApplicationOut(BaseModel):
     total_pv_kw: float
     status: ApplicationStatus
     created_at: str | None = None
+    solar_placement: dict[str, Any] | None = None
     latest_assessment: AssessmentOut | None = None
     raw: dict[str, Any] | None = None
 

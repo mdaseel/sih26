@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import type { Bus } from "@/lib/types";
+import { SolarPlanner, type SolarPlacement } from "@/components/solar3d/SolarPlanner";
 
 /**
  * New application form.
@@ -61,6 +62,7 @@ export default function NewApplicationPage() {
     new_pv_kw: "5",
   });
 
+  const [solarPlacement, setSolarPlacement] = useState<SolarPlacement | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -168,6 +170,7 @@ export default function NewApplicationPage() {
         pv_bus: form.pv_bus,
         existing_pv_kw: Number(form.existing_pv_kw) || 0,
         new_pv_kw: Number(form.new_pv_kw),
+        solar_placement: solarPlacement,
         submit: true,
       });
 
@@ -366,6 +369,42 @@ export default function NewApplicationPage() {
             {locationNote ??
               "Coordinates place your site on the map and are what installers are measured from. Without them, no installer can be sorted by distance."}
           </p>
+        </div>
+
+        {/* ---- 3D Rooftop Solar Placement & Real-Time Sunlight Analysis ---- */}
+        <div className="card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+                <span>🛰️</span> 3D Rooftop Solar Placement & Real-Time Sunlight Analysis
+              </h2>
+              <p className="text-xs text-slate-400">
+                Inspect your actual rooftop geometry, adjust solar panel capacity, tilt and azimuth, and analyze live sunlight conditions.
+              </p>
+            </div>
+            <span className="rounded-full border border-sky-700 bg-sky-950/60 px-3 py-1 text-xs font-semibold text-sky-300">
+              Cesium 3D Engine
+            </span>
+          </div>
+
+          <SolarPlanner
+            latitude={Number(form.latitude) || 18.5204}
+            longitude={Number(form.longitude) || 73.8567}
+            initialCapacityKw={Number(form.new_pv_kw) || 5}
+            pvBus={form.pv_bus || "734"}
+            roofAreaSqm={Number(form.roof_area_sqm) || null}
+            onUsePlacement={(placement) => {
+              setSolarPlacement(placement);
+              setForm((f) => ({
+                ...f,
+                latitude: placement.latitude.toFixed(6),
+                longitude: placement.longitude.toFixed(6),
+                new_pv_kw: placement.capacity_kw.toFixed(1),
+                roof_area_sqm: placement.array_area_sqm.toFixed(1),
+                shading_level: placement.suitability === "GOOD" ? "Low" : placement.suitability === "PARTIAL" ? "Medium" : "High",
+              }));
+            }}
+          />
         </div>
 
         {/* ---- Connection and roof ---- */}

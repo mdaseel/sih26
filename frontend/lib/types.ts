@@ -98,6 +98,18 @@ export interface Assessment {
   persisted: boolean;
 }
 
+export interface BuildingFootprint {
+  osm_id: string;
+  footprint: [number, number][];
+  height_m: number;
+  levels: number | null;
+  height_source: "height" | "levels" | "assumed" | string;
+  name: string | null;
+  building_type: string | null;
+  is_site?: boolean;
+  area_sqm: number;
+}
+
 export interface SolarApplication {
   id: string;
   application_number: string;
@@ -123,6 +135,7 @@ export interface SolarApplication {
   new_pv_kw: number;
   total_pv_kw: number;
   status: ApplicationStatus;
+  solar_placement?: Record<string, unknown> | null;
   created_at: string;
 }
 

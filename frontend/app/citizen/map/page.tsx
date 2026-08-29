@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { VendorMap } from "@/components/VendorMap";
+import { SolarPlanner } from "@/components/solar3d/SolarPlanner";
 import { api, ApiError } from "@/lib/api";
 import type { CitizenMapData } from "@/lib/types";
 
@@ -21,6 +22,7 @@ import type { CitizenMapData } from "@/lib/types";
 export default function MapPage() {
   const [data, setData] = useState<CitizenMapData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mapMode, setMapMode] = useState<"2D" | "3D">("2D");
 
   useEffect(() => {
     api
@@ -50,13 +52,34 @@ export default function MapPage() {
         <div>
           <h1 className="text-xl font-semibold text-slate-100">Installers near you</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Your sites, the installers the DISCOM has verified, and the route to any
-            installer who has taken your job.
+            Your sites, the installers the DISCOM has verified, and 3D rooftop solar planning.
           </p>
         </div>
-        <Link href="/citizen/vendors" className="btn-ghost">
-          Browse installers
-        </Link>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-lg border border-slate-700 p-0.5 bg-slate-900">
+            <button
+              type="button"
+              onClick={() => setMapMode("2D")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                mapMode === "2D" ? "bg-sky-600 text-white shadow" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              2D MAP
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapMode("3D")}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                mapMode === "3D" ? "bg-sky-600 text-white shadow" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              3D TWIN
+            </button>
+          </div>
+          <Link href="/citizen/vendors" className="btn-ghost">
+            Browse installers
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -92,7 +115,22 @@ export default function MapPage() {
       )}
 
       {data ? (
-        <VendorMap data={data} />
+        mapMode === "2D" ? (
+          <VendorMap data={data} />
+        ) : (
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-slate-200">
+              3D Digital Twin & Rooftop Solar Planning
+            </h2>
+            <SolarPlanner
+              latitude={18.5204}
+              longitude={73.8567}
+              initialCapacityKw={5}
+              pvBus="734"
+              roofAreaSqm={75}
+            />
+          </div>
+        )
       ) : (
         !error && <p className="text-sm text-slate-500">Loading the map…</p>
       )}

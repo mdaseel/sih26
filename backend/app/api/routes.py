@@ -39,6 +39,7 @@ from app.services.grid_assets import (
 from app.services.ml_prediction import get_ml_service
 from app.services.power_flow import PowerFlowError, get_power_flow_service
 from app.services.risk_assessment import get_risk_service
+from app.services.site_context import get_site_context_service
 from app.services.topology import get_topology_service
 
 router = APIRouter(prefix="/api")
@@ -150,6 +151,16 @@ def grid_local_topology(bus_id: str) -> dict[str, Any]:
     if not view["nodes"]:
         raise HTTPException(status_code=404, detail=f"No path to bus {bus_id}")
     return view
+
+
+@router.get("/site-context", tags=["gis"])
+def site_context(latitude: float, longitude: float, radius_m: int = 160) -> dict[str, Any]:
+    """OSM building footprints around a coordinate.
+
+    Fetched via Overpass. Used by the 3D Cesium viewer to render real building geometry
+    and roof heights without faking non-existent structures.
+    """
+    return get_site_context_service().buildings(latitude, longitude, radius_m)
 
 
 # ============================================================

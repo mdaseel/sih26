@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import type {
   ApplicationTimeline,
   Assessment,
+  BuildingFootprint,
   CFAEstimate,
   Bus,
   CitizenMapData,
@@ -115,6 +116,14 @@ export const api = {
   gridSummary: () => request<GridSummary>("/api/grid/summary"),
 
   buses: () => request<Bus[]>("/api/grid/buses"),
+
+  siteBuildings: (latitude: number, longitude: number) =>
+    request<{
+      buildings: BuildingFootprint[];
+      available: boolean;
+      note?: string;
+      count?: number;
+    }>(`/api/site-context?latitude=${latitude}&longitude=${longitude}`),
 
   /** Stateless assessment — used for the pre-submission preview. */
   assess: (payload: {

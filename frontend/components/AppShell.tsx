@@ -67,6 +67,21 @@ export function AppShell({
 
   const width = collapsed ? "lg:w-[4.5rem]" : "lg:w-64";
 
+  /**
+   * Exactly one link is ever active.
+   *
+   * A plain prefix test lights up every ancestor: on /citizen/applications/new
+   * both "My applications" and "New application" matched, so two entries were
+   * highlighted at once and neither told you where you were. The longest
+   * matching href wins instead, which is the most specific section containing
+   * the page — and only that one is marked.
+   */
+  const activeHref = links
+    .filter(
+      (link) => pathname === link.href || pathname.startsWith(`${link.href}/`)
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <div className="min-h-screen">
       {/* ---- top bar ---- */}
@@ -165,8 +180,7 @@ export function AppShell({
 
             <nav className="scroll-pane flex-1 space-y-1 p-3">
               {links.map((link) => {
-                const active =
-                  pathname === link.href || pathname.startsWith(`${link.href}/`);
+                const active = link.href === activeHref;
                 return (
                   <Link
                     key={link.href}

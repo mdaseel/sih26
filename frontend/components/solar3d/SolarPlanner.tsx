@@ -31,7 +31,7 @@ import type {
   SurfaceInfo,
 } from "@/components/solar3d/CesiumScene";
 import { api } from "@/lib/api";
-import type { Assessment, RiskLevel } from "@/lib/types";
+import type { Assessment } from "@/lib/types";
 
 // Cesium is megabytes and touches `window` on import: never server-render it.
 const CesiumScene = dynamic(
@@ -88,12 +88,6 @@ const VERDICT_STYLE: Record<string, string> = {
   UNKNOWN: "border-slate-700 bg-slate-900 text-slate-400",
 };
 
-const RISK_BADGE: Record<RiskLevel, string> = {
-  SAFE: "bg-green-500/20 text-green-300 border-green-700",
-  CAUTION: "bg-amber-500/20 text-amber-300 border-amber-700",
-  CONSTRAINED: "bg-red-500/20 text-red-300 border-red-700",
-};
-
 function toLocalInputValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -145,8 +139,7 @@ export function SolarPlanner({
   // Grid Assessment State
   const [assessingGrid, setAssessingGrid] = useState(false);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
-  const [gridError, setGridError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"after" | "before">("after");
+  const [, setGridError] = useState<string | null>(null);
 
   // Keep internal coordinates synced if props change
   useEffect(() => {
@@ -277,46 +270,9 @@ export function SolarPlanner({
   }
 
   const busy = status !== "ready" && status !== "error" && status !== "idle";
-  const optimalDiff = Math.abs(tiltDeg - Math.round(estimatedOptimalTilt(latitude))) + Math.abs(azimuthDeg - optimalAzimuth(latitude));
-  const isOptimal = optimalDiff < 10;
 
   return (
     <div className="space-y-6">
-      {/* Top Workflow Header */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg backdrop-blur">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-1.5 font-medium text-sky-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-[10px] text-sky-300">1</span>
-            Enter Location
-          </div>
-          <span className="text-slate-600">→</span>
-          <div className="flex items-center gap-1.5 font-medium text-sky-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-[10px] text-sky-300">2</span>
-            3D Map Loads
-          </div>
-          <span className="text-slate-600">→</span>
-          <div className="flex items-center gap-1.5 font-medium text-sky-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-[10px] text-sky-300">3</span>
-            Detect Rooftop
-          </div>
-          <span className="text-slate-600">→</span>
-          <div className="flex items-center gap-1.5 font-medium text-sky-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-[10px] text-sky-300">4</span>
-            Place Solar Panels
-          </div>
-          <span className="text-slate-600">→</span>
-          <div className="flex items-center gap-1.5 font-medium text-sky-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/20 text-[10px] text-sky-300">5</span>
-            Analyze Sunlight
-          </div>
-          <span className="text-slate-600">→</span>
-          <div className="flex items-center gap-1.5 font-medium text-emerald-400">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-[10px] text-emerald-300">6</span>
-            Optimize & Save
-          </div>
-        </div>
-      </div>
-
       {/* Main 3-Column Layout */}
       <div className="grid gap-5 lg:grid-cols-12">
         {/* Left Column: Input Panel & Solar Insights */}
@@ -657,16 +613,6 @@ export function SolarPlanner({
               />
             </div>
 
-            {isOptimal && (
-              <div className="rounded-lg border border-emerald-700/80 bg-emerald-950/40 p-2 text-xs text-emerald-300 flex items-center gap-2">
-                <span>✨</span>
-                <div>
-                  <div className="font-semibold">Optimal Orientation!</div>
-                  <div className="text-[10px] text-emerald-400/80">Maximizing annual solar energy production.</div>
-                </div>
-              </div>
-            )}
-
             <button
               type="button"
               onClick={handleConfirmPlacement}
@@ -679,129 +625,7 @@ export function SolarPlanner({
         </div>
       </div>
 
-      {/* Grid Impact Assessment Results Section */}
-      {(assessment || assessingGrid || gridError) && (
-        <div className="card space-y-4 border-slate-700 bg-slate-900/90 shadow-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-            <div>
-              <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-                <span>⚡</span> SolarGrid AI — Pandapower Simulation Results
-              </h3>
-              <p className="text-xs text-slate-400">
-                ML pre-screening prediction verified against deterministic AC power flow equations.
-              </p>
-            </div>
 
-            <div className="flex items-center gap-3">
-              <div className="flex rounded-lg border border-slate-700 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setViewMode("after")}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                    viewMode === "after" ? "bg-sky-600 text-white" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  AFTER (With PV)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode("before")}
-                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                    viewMode === "before" ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  BEFORE (Base Grid)
-                </button>
-              </div>
-
-              {assessment && (
-                <span className={`rounded-md border px-3 py-1 text-xs font-bold ${RISK_BADGE[assessment.engineering.engineering_risk]}`}>
-                  Risk: {assessment.engineering.engineering_risk}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {gridError && (
-            <p className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-xs text-red-300">
-              {gridError}
-            </p>
-          )}
-
-          {assessment && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 text-sm">
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-                <div className="metric-label">Bus Voltage</div>
-                <div className="font-mono text-base font-semibold text-slate-100">
-                  {viewMode === "after"
-                    ? assessment.metrics.pv_voltage_pu.toFixed(4)
-                    : assessment.metrics.base_voltage_pu.toFixed(4)}{" "}
-                  <span className="text-xs text-slate-400">pu</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-                <div className="metric-label">Voltage Rise</div>
-                <div className="font-mono text-base font-semibold text-sky-400">
-                  {viewMode === "after" ? assessment.metrics.voltage_rise_pu.toFixed(5) : "0.00000"}{" "}
-                  <span className="text-xs text-slate-400">pu</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-                <div className="metric-label">Transformer Loading</div>
-                <div className="font-mono text-base font-semibold text-amber-400">
-                  {viewMode === "after"
-                    ? assessment.metrics.max_transformer_loading_pct.toFixed(1)
-                    : assessment.metrics.base_max_transformer_loading_pct.toFixed(1)}{" "}
-                  <span className="text-xs text-slate-400">%</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-                <div className="metric-label">Max Line Loading</div>
-                <div className="font-mono text-base font-semibold text-slate-100">
-                  {viewMode === "after"
-                    ? assessment.metrics.max_line_loading_pct.toFixed(1)
-                    : assessment.metrics.base_max_line_loading_pct.toFixed(1)}{" "}
-                  <span className="text-xs text-slate-400">%</span>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-                <div className="metric-label">Reverse Power Flow</div>
-                <div className="font-mono text-base font-semibold text-emerald-400">
-                  {viewMode === "after" && assessment.metrics.reverse_power_flow
-                    ? "YES (Exporting)"
-                    : "NO (Consuming)"}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Footer Key Features & Tech Stack */}
-      <div className="grid gap-4 rounded-xl border border-slate-800 bg-slate-950 p-4 lg:grid-cols-2 text-xs">
-        <div>
-          <h4 className="font-semibold uppercase tracking-wider text-slate-400 mb-2">Key Features</h4>
-          <div className="grid grid-cols-2 gap-2 text-slate-300">
-            <div>🌐 3D Cesium Globe</div>
-            <div>🏠 OSM 3D Roof Footprints</div>
-            <div>☀️ Real-Time Sun Position</div>
-            <div>⚡ Pandapower Power Flow</div>
-          </div>
-        </div>
-        <div>
-          <h4 className="font-semibold uppercase tracking-wider text-slate-400 mb-2">Tech Stack</h4>
-          <div className="grid grid-cols-2 gap-2 text-slate-300">
-            <div>CesiumJS / Cesium Ion</div>
-            <div>SunCalc NOAA Solar Model</div>
-            <div>FastAPI + Pandapower</div>
-            <div>Supabase PostgreSQL</div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

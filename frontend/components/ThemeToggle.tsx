@@ -20,7 +20,8 @@ export type Theme = "dark" | "light";
 const STORAGE_KEY = "solargrid-theme";
 
 export function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle("light", theme === "light");
+  // Light is the default, so the class marks the exception.
+  document.documentElement.classList.toggle("dark", theme === "dark");
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
   } catch {
@@ -29,15 +30,15 @@ export function applyTheme(theme: Theme) {
 }
 
 function currentTheme(): Theme {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.classList.contains("light") ? "light" : "dark";
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
-  // Starts dark and corrects itself on mount. Rendering the real value during
-  // SSR is impossible — the server cannot know what this browser stored — and
-  // guessing produces a hydration mismatch.
-  const [theme, setTheme] = useState<Theme>("dark");
+  // Starts on the default and corrects itself on mount. Rendering the real
+  // value during SSR is impossible — the server cannot know what this browser
+  // stored — and guessing produces a hydration mismatch.
+  const [theme, setTheme] = useState<Theme>("light");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {

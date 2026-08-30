@@ -1,0 +1,37 @@
+{
+  "generated_rows": 900,
+  "non_convergent": 0,
+  "combined": {
+    "train": 1770,
+    "val": 411,
+    "test": 411
+  },
+  "candidate": {
+    "val": {
+      "accuracy": 0.9927007299270073,
+      "f1_macro": 0.9906474693647995,
+      "auc": 0.9993811146182695,
+      "false_safe": 0,
+      "constrained_recall": 1.0
+    },
+    "test": {
+      "accuracy": 0.9902676399026764,
+      "f1_macro": 0.9892255892255891,
+      "auc": 0.9995144308544086,
+      "false_safe": 0,
+      "constrained_recall": 1.0
+    }
+  },
+  "candidate_residential_band": {
+    "accuracy": 1.0,
+    "f1_macro": 1.0,
+    "false_safe": 0,
+    "constrained_recall": NaN
+  },
+  "production_on_same_test": {
+    "accuracy": 0.9854014598540146,
+    "f1_macro": 0.9823887739043649,
+    "false_safe": 0,
+    "constrained_recall": 1.0
+  }
+}

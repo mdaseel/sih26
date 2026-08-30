@@ -92,6 +92,35 @@ export interface EngineeringMetrics {
   runtime_ms: number;
 }
 
+/**
+ * Spare capacity at the connection point.
+ *
+ * The verdict says whether this system may connect; this says by how much. On
+ * this feeder the limits run from 50 kW to 538 kW depending on the bus, so a
+ * SAFE verdict on its own withholds the number that actually differs between
+ * one roof and another.
+ *
+ * Null on the assessment when the backend could not compute it. Absent is not
+ * the same as ample and the UI must not draw it as such.
+ */
+export interface Headroom {
+  bus_id: string;
+  hosting_capacity_kw: number;
+  existing_pv_kw: number;
+  requested_new_pv_kw: number;
+  headroom_after_kw: number;
+  utilisation_pct: number | null;
+  limiting_constraint: string;
+  limiting_reason: string;
+  saturated: boolean;
+  method: string;
+  /**
+   * "assessment" when computed with the verdict shown; "current" when
+   * recomputed now for a stored result, and so describing today's network.
+   */
+  as_of: "assessment" | "current";
+}
+
 export interface Assessment {
   application_id: string | null;
   simulation_id: string | null;
@@ -99,6 +128,7 @@ export interface Assessment {
   ml: MLPrediction;
   engineering: EngineeringVerdict;
   metrics: EngineeringMetrics;
+  headroom: Headroom | null;
   ml_agrees_with_engineering: boolean;
   authority: string;
   data_class: string;

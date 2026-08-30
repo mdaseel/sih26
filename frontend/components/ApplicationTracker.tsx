@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import {
   isHalted,
+  outcomeFor,
   resolveStages,
   stageIndexFor,
   TERMINAL,
@@ -51,6 +52,9 @@ function formatWhen(iso: string | null): string | null {
 const NODE: Record<StageState, string> = {
   done: "border-sky-600 bg-sky-600 text-white",
   current: "border-sky-400 bg-slate-950 text-sky-300",
+  // An approval is not just another completed step, so it does not look like
+  // one. Green here answers the question the applicant opened the page to ask.
+  passed: "border-green-600 bg-green-600 text-white",
   stopped: "border-red-600 bg-red-600 text-white",
   pending: "border-slate-700 bg-slate-950 text-slate-600",
 };
@@ -58,6 +62,7 @@ const NODE: Record<StageState, string> = {
 const LABEL: Record<StageState, string> = {
   done: "text-slate-300",
   current: "text-sky-300",
+  passed: "text-green-300",
   stopped: "text-red-300",
   pending: "text-slate-600",
 };
@@ -71,7 +76,11 @@ function Node({ stage, index }: { stage: ResolvedStage; index: number }) {
       <span
         className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 text-[11px] font-semibold transition-colors ${NODE[stage.state]}`}
       >
-        {stage.state === "done" ? "✓" : stage.state === "stopped" ? "!" : index + 1}
+        {stage.state === "done" || stage.state === "passed"
+          ? "✓"
+          : stage.state === "stopped"
+            ? "!"
+            : index + 1}
       </span>
     </span>
   );
@@ -81,10 +90,39 @@ function Node({ stage, index }: { stage: ResolvedStage; index: number }) {
 function Rail({ state, vertical }: { state: StageState; vertical?: boolean }) {
   const base = vertical ? "w-0.5 flex-1 rounded-full" : "h-0.5 flex-1 rounded-full";
   if (state === "done") return <span className={`${base} bg-sky-600`} />;
+  if (state === "passed") return <span className={`${base} bg-green-600`} />;
   if (state === "current")
     return <span className={`${base} ${vertical ? "track-live-v" : "track-live"}`} />;
   if (state === "stopped") return <span className={`${base} bg-red-900`} />;
   return <span className={`${base} bg-slate-800`} />;
+}
+
+/**
+ * What the headline says once the DISCOM has decided.
+ *
+ * Both outcomes get named. Falling back to the stage label meant an approved
+ * application announced itself as "Decision", which is the one word that does
+ * not answer the question the reader came with.
+ */
+function headline(outcome: ReturnType<typeof outcomeFor>, stageLabel?: string): string {
+  if (outcome === "approved") return "Approved by the DISCOM";
+  if (outcome === "rejected") return "Rejected by the DISCOM";
+  if (outcome === "cancelled") return "Cancelled";
+  return stageLabel ?? "In progress";
+}
+
+function detail(
+  outcome: ReturnType<typeof outcomeFor>,
+  status: ApplicationStatus,
+  stageDetail?: string
+): string {
+  if (outcome === "rejected" || outcome === "cancelled") {
+    return "This application will not progress further.";
+  }
+  if (outcome === "approved" && status === "APPROVED") {
+    return "Your connection is approved. Next, choose a verified installer.";
+  }
+  return stageDetail ?? "";
 }
 
 export function ApplicationTracker({
@@ -148,6 +186,7 @@ export function ApplicationTracker({
 
   const stages = useMemo(() => resolveStages(status_, history), [status_, history]);
   const halted = isHalted(status_);
+  const outcome = outcomeFor(status_);
   const currentIndex = stageIndexFor(status_);
   const current = stages[currentIndex] ?? null;
 
@@ -173,19 +212,19 @@ export function ApplicationTracker({
           )}
           <div>
             <div
-              className={`text-sm font-medium ${halted ? "text-red-300" : "text-slate-200"}`}
+              className={`text-sm font-medium ${
+                outcome === "rejected" || outcome === "cancelled"
+                  ? "text-red-300"
+                  : outcome === "approved"
+                    ? "text-green-300"
+                    : "text-slate-200"
+              }`}
             >
-              {halted
-                ? status_ === "REJECTED"
-                  ? "Rejected by the DISCOM"
-                  : "Cancelled"
-                : (current?.label ?? "In progress")}
+              {headline(outcome, current?.label)}
             </div>
             {!compact && (
               <div className="text-xs text-slate-500">
-                {halted
-                  ? "This application will not progress further."
-                  : (current?.detail ?? "")}
+                {detail(outcome, status_, current?.detail)}
               </div>
             )}
           </div>

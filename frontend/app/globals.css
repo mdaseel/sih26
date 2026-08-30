@@ -371,6 +371,12 @@ h4 {
 /*
    Risk and status colours are NOT remapped to tokens.
 
+   The -100 tints are included alongside -200 and -300. They were missed the
+   first time, and since light mode lightens the tinted backgrounds, a
+   text-amber-100 heading on a bg-amber-950/40 panel ended up as pale cream on
+   pale cream — the "not a government service" banner on the scheme page was
+   invisible.
+
    Green, amber and red carry meaning here — a CONSTRAINED verdict is red
    because it is constrained — and that must read identically in both themes.
    Only the tinted backgrounds move, so the hue survives on either ground.
@@ -394,19 +400,25 @@ h4 {
   background-color: rgb(var(--accent) / 0.1) !important;
 }
 
+.text-green-100,
 .text-green-200,
 .text-green-300 {
   color: rgb(21 128 61) !important;
 }
+.text-amber-100,
 .text-amber-200,
 .text-amber-300,
+.text-yellow-100,
 .text-yellow-300 {
   color: rgb(180 83 9) !important;
 }
+.text-red-100,
 .text-red-200,
 .text-red-300 {
   color: rgb(185 28 28) !important;
 }
+.text-sky-100,
+.text-sky-200,
 .text-sky-300,
 .text-sky-400 {
   color: rgb(var(--accent)) !important;
@@ -431,19 +443,25 @@ html.dark .bg-sky-950\/60 {
   background-color: rgb(8 47 73 / 0.5) !important;
 }
 
+html.dark .text-green-100,
 html.dark .text-green-200,
 html.dark .text-green-300 {
   color: rgb(134 239 172) !important;
 }
+html.dark .text-amber-100,
 html.dark .text-amber-200,
 html.dark .text-amber-300,
+html.dark .text-yellow-100,
 html.dark .text-yellow-300 {
   color: rgb(253 224 71) !important;
 }
+html.dark .text-red-100,
 html.dark .text-red-200,
 html.dark .text-red-300 {
   color: rgb(252 165 165) !important;
 }
+html.dark .text-sky-100,
+html.dark .text-sky-200,
 html.dark .text-sky-300,
 html.dark .text-sky-400 {
   color: rgb(var(--accent)) !important;

@@ -7,7 +7,7 @@ column, and the JSON the frontend renders.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -155,6 +155,49 @@ class EngineeringVerdictOut(BaseModel):
     thresholds_snapshot: dict[str, float]
 
 
+class HeadroomOut(BaseModel):
+    """How much room this connection point has left, and how much of it is being asked for.
+
+    The verdict says whether this request passes. It does not say whether it
+    passed with metres to spare or by a hair, and those are different facts for
+    an applicant deciding whether to ask for a larger system — and for a
+    reviewer deciding how much of a shared limit one connection should take.
+
+    Every figure here is bisected out of the same deterministic power flow that
+    produced the verdict, at the same thresholds. Nothing is modelled or
+    predicted: see HostingCapacityService.
+    """
+
+    bus_id: str
+    hosting_capacity_kw: float = Field(
+        description="Largest new system this bus can host before a hard limit binds."
+    )
+    existing_pv_kw: float
+    requested_new_pv_kw: float
+    headroom_after_kw: float = Field(
+        description="Capacity left once this request is connected. Negative means it exceeds the limit."
+    )
+    utilisation_pct: float | None = Field(
+        default=None,
+        description="Share of the bus's capacity this connection would use. None when capacity is zero.",
+    )
+    limiting_constraint: str
+    limiting_reason: str
+    saturated: bool = Field(
+        default=False,
+        description="True when no limit was found below the search ceiling, so the capacity is a floor, not the answer.",
+    )
+    method: str
+    as_of: Literal["assessment", "current"] = Field(
+        default="assessment",
+        description=(
+            "'assessment' when computed alongside the verdict being shown; "
+            "'current' when computed now for a stored result, and so against "
+            "today's network and thresholds rather than the ones on record."
+        ),
+    )
+
+
 class AssessmentOut(BaseModel):
     """The complete two-layer result.
 
@@ -169,6 +212,13 @@ class AssessmentOut(BaseModel):
     ml: MLPredictionOut
     engineering: EngineeringVerdictOut
     metrics: EngineeringMetricsOut
+    headroom: HeadroomOut | None = Field(
+        default=None,
+        description=(
+            "Spare capacity at the connection point. Null when it could not be "
+            "computed — an absent headroom is never reported as an ample one."
+        ),
+    )
 
     ml_agrees_with_engineering: bool
     authority: str = Field(

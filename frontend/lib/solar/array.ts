@@ -52,6 +52,8 @@ export interface ArrayLayout {
   moduleAreaSqm: number;
   /** Ground/roof area the tilted array occupies, m². */
   occupiedAreaSqm: number;
+  /** Gap between rows up the slope, metres — see layoutFor. */
+  rowGapM: number;
   spec: PanelSpec;
 }
 
@@ -77,7 +79,16 @@ export function panelsForCapacity(capacityKw: number, spec: PanelSpec): number {
 export function layoutFor(
   requestedCapacityKw: number,
   spec: PanelSpec = DEFAULT_PANEL_SPEC,
-  tiltDeg = 0
+  tiltDeg = 0,
+  /**
+   * Gap between rows, metres. Distinct from spec.gapM, which is the few
+   * centimetres of rail clearance between modules sitting side by side in one
+   * row. Row pitch is a different quantity entirely: it is the space left so a
+   * tilted row does not cast a shadow on the row behind it, and it is measured
+   * in metres, not millimetres. Collapsing the two meant the row-spacing
+   * control changed nothing at all.
+   */
+  rowGapM: number = spec.gapM
 ): ArrayLayout {
   const panelCount = panelsForCapacity(requestedCapacityKw, spec);
   const columns = panelCount > 0 ? Math.ceil(Math.sqrt(panelCount)) : 0;
@@ -85,7 +96,7 @@ export function layoutFor(
 
   const footprintWidthM =
     columns > 0 ? columns * spec.widthM + (columns - 1) * spec.gapM : 0;
-  const slopeLengthM = rows > 0 ? rows * spec.lengthM + (rows - 1) * spec.gapM : 0;
+  const slopeLengthM = rows > 0 ? rows * spec.lengthM + (rows - 1) * rowGapM : 0;
 
   // Tilting a panel shortens the ground it covers by cos(tilt); the array is
   // no shorter, it just lies over less roof.
@@ -103,6 +114,7 @@ export function layoutFor(
     footprintLengthM: round(footprintLengthM, 3),
     moduleAreaSqm: round(moduleAreaSqm, 2),
     occupiedAreaSqm: round(footprintWidthM * footprintLengthM, 2),
+    rowGapM: round(rowGapM, 3),
     spec,
   };
 }
@@ -112,11 +124,12 @@ export function modulePositions(
   layout: ArrayLayout,
   tiltDeg = 0
 ): { alongM: number; acrossM: number; index: number }[] {
-  const { columns, rows, panelCount, spec } = layout;
+  const { columns, rows, panelCount, spec, rowGapM } = layout;
   if (panelCount === 0) return [];
 
   const pitchAcross = spec.widthM + spec.gapM;
-  const pitchAlong = (spec.lengthM + spec.gapM) * Math.cos((tiltDeg * Math.PI) / 180);
+  const pitchAlong =
+    (spec.lengthM + (rowGapM ?? spec.gapM)) * Math.cos((tiltDeg * Math.PI) / 180);
 
   const out: { alongM: number; acrossM: number; index: number }[] = [];
   for (let index = 0; index < panelCount; index++) {
@@ -129,6 +142,41 @@ export function modulePositions(
     });
   }
   return out;
+}
+
+/**
+ * The largest capacity whose array still fits the declared roof, in kW.
+ *
+ * Walks up module by module and stops at the last count that fits, rather than
+ * dividing areas: the array is laid out in whole rows and columns, so its
+ * footprint grows in steps, and area arithmetic would promise a capacity that
+ * does not actually pack onto the roof.
+ *
+ * Capped by maxCapacityKw so it can never propose more than the application is
+ * allowed to request.
+ */
+export function capacityToFillRoof(
+  roofAreaSqm: number | null | undefined,
+  spec: PanelSpec = DEFAULT_PANEL_SPEC,
+  tiltDeg = 0,
+  rowGapM: number = spec.gapM,
+  maxCapacityKw = Infinity
+): number | null {
+  if (roofAreaSqm == null || roofAreaSqm <= 0) return null;
+
+  let best: number | null = null;
+  const ceiling = Number.isFinite(maxCapacityKw)
+    ? Math.ceil((maxCapacityKw * 1000) / spec.watts)
+    : 400;
+
+  for (let count = 1; count <= ceiling; count++) {
+    const capacityKw = (count * spec.watts) / 1000;
+    const layout = layoutFor(capacityKw, spec, tiltDeg, rowGapM);
+    if (layout.occupiedAreaSqm > roofAreaSqm) break;
+    best = capacityKw;
+  }
+
+  return best === null ? null : round(Math.min(best, maxCapacityKw), 2);
 }
 
 /** Does the array fit the roof area the applicant declared? */

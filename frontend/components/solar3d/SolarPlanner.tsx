@@ -4,12 +4,19 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  capacityToFillRoof,
   DEFAULT_PANEL_SPEC,
   formatArea,
   formatLength,
   layoutFor,
+  panelsForCapacity,
   type PanelSpec,
 } from "@/lib/solar/array";
+import {
+  fetchSkyConditions,
+  skyLabel,
+  type SkyConditions,
+} from "@/lib/solar/weather";
 import {
   MAX_NEW_PV_KW,
   MIN_NEW_PV_KW,
@@ -99,6 +106,7 @@ export function SolarPlanner({
   initialCapacityKw,
   pvBus = "734",
   roofAreaSqm,
+  onCapacityChange,
   onUsePlacement,
   panelSpec = DEFAULT_PANEL_SPEC,
 }: {
@@ -107,6 +115,8 @@ export function SolarPlanner({
   initialCapacityKw: number;
   pvBus?: string;
   roofAreaSqm: number | null;
+  /** Called when the planner changes the system size, so the form field follows. */
+  onCapacityChange?: (kw: number) => void;
   onUsePlacement?: (placement: SolarPlacement) => void;
   panelSpec?: PanelSpec;
 }) {
@@ -131,6 +141,9 @@ export function SolarPlanner({
   const [showLabels, setShowLabels] = useState(true);
   const [showSunPath, setShowSunPath] = useState(true);
 
+  const [sky, setSky] = useState<SkyConditions | null>(null);
+  const [skyError, setSkyError] = useState<string | null>(null);
+
   const [surface, setSurface] = useState<SurfaceInfo | null>(null);
   const [shading, setShading] = useState<ShadingSample | null>(null);
   const [status, setStatus] = useState<SceneStatus>("idle");
@@ -151,10 +164,61 @@ export function SolarPlanner({
 
   useEffect(() => setCapacityKw(initialCapacityKw), [initialCapacityKw]);
 
+  /**
+   * Live sky over this roof, refreshed when the site moves.
+   *
+   * Only the sun rays and their caption depend on it, and both are drawn
+   * without it if the call fails — the geometry is astronomy and stands on its
+   * own. Nothing here substitutes a default cloud figure.
+   */
+  useEffect(() => {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    const controller = new AbortController();
+    let live = true;
+
+    fetchSkyConditions(latitude, longitude, controller.signal)
+      .then((conditions) => {
+        if (!live) return;
+        setSky(conditions);
+        setSkyError(conditions ? null : "Live sky conditions unavailable.");
+      })
+      .catch((error: unknown) => {
+        if (!live || controller.signal.aborted) return;
+        setSky(null);
+        setSkyError(
+          error instanceof Error ? error.message : "Live sky conditions unavailable."
+        );
+      });
+
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [latitude, longitude]);
+
+  // Row spacing is a real dimension of the array, not a display preference:
+  // it is the gap between rows up the slope, so it stretches the footprint and
+  // moves the modules in the scene. It used to be held in state and read by
+  // nothing, which made the slider look broken because it was.
   const layout = useMemo(
-    () => layoutFor(capacityKw, panelSpec, tiltDeg),
-    [capacityKw, panelSpec, tiltDeg]
+    () => layoutFor(capacityKw, panelSpec, tiltDeg, rowSpacingM),
+    [capacityKw, panelSpec, tiltDeg, rowSpacingM]
   );
+
+  /**
+   * The largest system this roof can actually carry at the current tilt and
+   * row spacing, or null if the roof area has not been declared.
+   *
+   * Recomputed as the spacing and tilt move, so the button never offers a
+   * capacity that the array being drawn would not fit.
+   */
+  const fitCapacityKw = useMemo(
+    () => capacityToFillRoof(roofAreaSqm, panelSpec, tiltDeg, rowSpacingM, MAX_NEW_PV_KW),
+    [roofAreaSqm, panelSpec, tiltDeg, rowSpacingM]
+  );
+
+  const fitsExactly =
+    fitCapacityKw != null && Math.abs(fitCapacityKw - capacityKw) < 0.01;
 
   const sun = useMemo(
     () => sunPosition(when, latitude, longitude),
@@ -390,7 +454,7 @@ export function SolarPlanner({
                   onChange={(e) => setShowSunPath(e.target.checked)}
                   className="rounded border-slate-700 accent-sky-500"
                 />
-                Sun Path
+                Sun Rays
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
                 <input
@@ -423,6 +487,8 @@ export function SolarPlanner({
               mountHeightM={mountHeightM}
               showShadows={showShadows}
               showBuildings={showBuildings}
+              showSunRays={showSunPath}
+              cloudCoverPct={sky?.cloudCoverPct ?? null}
               riskLevel={assessment?.engineering.engineering_risk}
               onSurface={handleSurface}
               onStatus={handleStatus}
@@ -494,6 +560,48 @@ export function SolarPlanner({
             <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-300">
               Sunlight Analysis
             </h3>
+
+            {/*
+              What the sky is doing right now, from Open-Meteo. It sits above
+              the date picker because it applies to this moment only: move the
+              clock to next Tuesday and the cloud figure below stops describing
+              it. Absent, it says absent — the dashed rays are still drawn from
+              the computed sun position, which needs no forecast.
+            */}
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
+              {sky ? (
+                <>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="font-medium text-amber-200">
+                      {skyLabel(sky.cloudCoverPct)}
+                    </span>
+                    <span className="font-mono text-amber-300">
+                      {Math.round(sky.cloudCoverPct)}% cloud
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+                    <span>Beam {Math.round(sky.directNormalWm2)} W/m²</span>
+                    <span>Horizontal {Math.round(sky.globalHorizontalWm2)} W/m²</span>
+                    {Number.isFinite(sky.temperatureC) && (
+                      <span>{sky.temperatureC.toFixed(0)}°C</span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    Measured{" "}
+                    {sky.observedAt.toLocaleTimeString(undefined, {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    · Open-Meteo
+                  </div>
+                </>
+              ) : (
+                <div className="text-[11px] text-slate-500">
+                  {skyError ?? "Reading live sky conditions…"} Sun direction is
+                  still exact — it is computed, not forecast.
+                </div>
+              )}
+            </div>
 
             <div>
               <label className="label text-xs">Date & Time</label>
@@ -611,6 +719,51 @@ export function SolarPlanner({
                 onChange={(e) => setRowSpacingM(Number(e.target.value))}
                 className="w-full accent-sky-500"
               />
+            </div>
+
+            {/*
+              Scale the array to the roof.
+
+              The capacity comes from the application form, which is the right
+              default: it is what the citizen asked for. But someone looking at
+              their own roof in 3D wants to know what it would actually hold,
+              and working that out by nudging the kW field until the rectangles
+              stop overhanging is not a thing to ask of anyone. This computes it
+              from the same geometry the scene draws, capped at the residential
+              limit the backend enforces.
+            */}
+            <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="text-slate-300">Fit array to roof</span>
+                <span className="font-mono text-sky-400">
+                  {fitCapacityKw != null ? `${fitCapacityKw.toFixed(1)} kW` : "—"}
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                {roofAreaSqm == null
+                  ? "Enter your roof area on the form above to size the array to it."
+                  : fitCapacityKw == null
+                    ? `${roofAreaSqm} m² is not enough for a single module at this spacing.`
+                    : `${roofAreaSqm} m² holds ${panelsForCapacity(fitCapacityKw, panelSpec)} modules at ${rowSpacingM} m row spacing.`}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  if (fitCapacityKw == null) return;
+                  setCapacityKw(fitCapacityKw);
+                  onCapacityChange?.(fitCapacityKw);
+                }}
+                disabled={fitCapacityKw == null || fitsExactly}
+                className="btn-ghost mt-2 w-full !py-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {fitsExactly ? "Already filling the roof" : "Scale to fill roof"}
+              </button>
+              {fitCapacityKw != null && fitCapacityKw >= MAX_NEW_PV_KW && (
+                <p className="mt-1.5 text-[11px] text-amber-400">
+                  Capped at the {MAX_NEW_PV_KW} kW residential limit — the roof
+                  itself would take more.
+                </p>
+              )}
             </div>
 
             <button

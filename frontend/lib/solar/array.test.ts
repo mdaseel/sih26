@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  capacityToFillRoof,
   DEFAULT_PANEL_SPEC,
   fitsRoofArea,
   formatArea,
@@ -272,5 +273,82 @@ describe("checkPlacement", () => {
   it("warns when the array exceeds the declared roof", () => {
     const checks = checkPlacement({ ...ok, arrayAreaSqm: 150 });
     expect(checks.some((c) => /only 100/.test(c.message))).toBe(true);
+  });
+});
+
+
+describe("row spacing", () => {
+  // The bug this covers: row pitch and module gap were the same number, so the
+  // row-spacing control moved nothing on screen.
+  const spec = DEFAULT_PANEL_SPEC;
+
+  it("stretches the array up the slope without touching its width", () => {
+    const tight = layoutFor(5, spec, 0, 0.02);
+    const spaced = layoutFor(5, spec, 0, 1.2);
+
+    expect(spaced.footprintLengthM).toBeGreaterThan(tight.footprintLengthM);
+    expect(spaced.footprintWidthM).toBeCloseTo(tight.footprintWidthM, 6);
+  });
+
+  it("leaves the module count and capacity alone", () => {
+    const tight = layoutFor(5, spec, 0, 0.02);
+    const spaced = layoutFor(5, spec, 0, 2.0);
+
+    expect(spaced.panelCount).toBe(tight.panelCount);
+    expect(spaced.actualCapacityKw).toBe(tight.actualCapacityKw);
+  });
+
+  it("actually moves the modules apart", () => {
+    const spaced = layoutFor(5, spec, 0, 1.5);
+    const rows = Array.from(
+      new Set(modulePositions(spaced, 0).map((m) => m.alongM.toFixed(3)))
+    );
+    const sorted = rows.map(Number).sort((a, b) => a - b);
+    const pitch = sorted[1] - sorted[0];
+
+    // Module length plus the requested row gap.
+    expect(pitch).toBeCloseTo(spec.lengthM + 1.5, 3);
+  });
+
+  it("defaults to the module gap, so old callers are unchanged", () => {
+    expect(layoutFor(5, spec, 0).footprintLengthM).toBeCloseTo(
+      layoutFor(5, spec, 0, spec.gapM).footprintLengthM,
+      6
+    );
+  });
+});
+
+describe("capacityToFillRoof", () => {
+  const spec = DEFAULT_PANEL_SPEC;
+
+  it("returns an array that genuinely fits", () => {
+    const kw = capacityToFillRoof(60, spec, 0, 0.02);
+    expect(kw).not.toBeNull();
+    expect(layoutFor(kw!, spec, 0, 0.02).occupiedAreaSqm).toBeLessThanOrEqual(60);
+  });
+
+  it("is the largest that fits — one more module would not", () => {
+    const kw = capacityToFillRoof(60, spec, 0, 0.02)!;
+    const next = kw + spec.watts / 1000;
+    expect(layoutFor(next, spec, 0, 0.02).occupiedAreaSqm).toBeGreaterThan(60);
+  });
+
+  it("gives less room when rows are spaced further apart", () => {
+    const tight = capacityToFillRoof(80, spec, 0, 0.02)!;
+    const spaced = capacityToFillRoof(80, spec, 0, 1.5)!;
+    expect(spaced).toBeLessThanOrEqual(tight);
+  });
+
+  it("never exceeds the cap the application allows", () => {
+    expect(capacityToFillRoof(10_000, spec, 0, 0.02, 11)).toBeLessThanOrEqual(11);
+  });
+
+  it("returns null when no roof area was declared", () => {
+    expect(capacityToFillRoof(null, spec)).toBeNull();
+    expect(capacityToFillRoof(0, spec)).toBeNull();
+  });
+
+  it("returns null for a roof too small for even one module", () => {
+    expect(capacityToFillRoof(0.5, spec)).toBeNull();
   });
 });

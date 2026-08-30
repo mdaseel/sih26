@@ -79,7 +79,33 @@ const STAGE_OF: Record<string, number> = Object.fromEntries(
 /** Nothing further happens on its own, so there is nothing left to poll for. */
 export const TERMINAL: ApplicationStatus[] = ["REJECTED", "CANCELLED", "VERIFIED"];
 
-export type StageState = "done" | "current" | "pending" | "stopped";
+export type StageState = "done" | "current" | "pending" | "stopped" | "passed";
+
+/**
+ * How the DISCOM's decision went, once there is one.
+ *
+ * The tracker used to name only the bad outcome: a rejection said "Rejected by
+ * the DISCOM", while an approval fell through to the stage's own label and read
+ * as the word "Decision". An applicant refreshing the page to find out whether
+ * they had been approved was shown a heading that did not tell them.
+ */
+export type Outcome = "approved" | "rejected" | "cancelled" | null;
+
+export function outcomeFor(status: ApplicationStatus): Outcome {
+  if (status === "REJECTED") return "rejected";
+  if (status === "CANCELLED") return "cancelled";
+  // Everything downstream of approval implies the approval happened.
+  if (
+    status === "APPROVED" ||
+    status === "VENDOR_SELECTED" ||
+    status === "INSTALLING" ||
+    status === "INSTALLED" ||
+    status === "VERIFIED"
+  ) {
+    return "approved";
+  }
+  return null;
+}
 
 export interface ResolvedStage extends TrackerStage {
   state: StageState;
@@ -121,11 +147,18 @@ export function resolveStages(
     if (seen === undefined || row.created_at < seen) reachedAt.set(index, row.created_at);
   }
 
+  const decision = STAGES.findIndex((s) => s.key === "decision");
+  const approved = outcomeFor(status) === "approved";
+
   return STAGES.map((stage, i) => {
     const at = reachedAt.get(i) ?? null;
     let state: StageState;
     if (halted && i === current) state = "stopped";
     else if (halted && i > current) state = "pending";
+    // An approval resolves the decision stage rather than sitting inside it:
+    // the DISCOM has finished, and what is outstanding is the applicant's next
+    // move. Marking it "current" would say the review is still running.
+    else if (approved && i === decision) state = "passed";
     else if (i < current) state = "done";
     else if (i === current) state = "current";
     else state = "pending";

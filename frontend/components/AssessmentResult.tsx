@@ -262,6 +262,103 @@ export function AssessmentResult({ result }: { result: Assessment }) {
         )}
       </div>
 
+      {/* ---- how much room is left ---- */}
+      {/*
+        The verdict answers "may this connect?". This answers "by how much?",
+        and on this feeder that is the number that actually varies: the same
+        5 kW system is 10% of one connection point's capacity and 0.9% of
+        another's, and both read SAFE. Without it a reader is shown the least
+        informative half of the result and reasonably concludes the model is
+        not doing much.
+
+        Every figure is bisected out of the same power flow that produced the
+        verdict, at the same thresholds — nothing here is predicted. When the
+        backend could not compute it the card is not drawn, because a blank
+        headroom must never be read as a generous one.
+      */}
+      {result.headroom && (
+        <div className="card">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h3 className="text-sm font-semibold text-slate-200">
+              Capacity left at connection point {result.headroom.bus_id}
+            </h3>
+            <span className="text-xs text-slate-500">
+              {result.headroom.as_of === "current"
+                ? "measured against the network as it stands today"
+                : "measured, not predicted"}
+            </span>
+          </div>
+
+          {(() => {
+            const h = result.headroom;
+            const used = Math.max(0, Math.min(100, h.utilisation_pct ?? 0));
+            const overLimit = h.headroom_after_kw < 0;
+            const tight = !overLimit && used >= 80;
+            const bar = overLimit
+              ? "bg-red-500"
+              : tight
+                ? "bg-amber-500"
+                : "bg-green-500";
+
+            return (
+              <>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  <Metric
+                    label="This request"
+                    value={h.requested_new_pv_kw.toFixed(1)}
+                    unit="kW"
+                  />
+                  <Metric
+                    label={h.saturated ? "Capacity (at least)" : "Hosting capacity"}
+                    value={h.hosting_capacity_kw.toFixed(0)}
+                    unit="kW"
+                    hint={`limited by ${h.limiting_constraint.replace(/_/g, " ")}`}
+                  />
+                  <Metric
+                    label="Left afterwards"
+                    value={h.headroom_after_kw.toFixed(0)}
+                    unit="kW"
+                    emphasis={overLimit ? "bad" : tight ? "warn" : "normal"}
+                  />
+                </div>
+
+                {h.utilisation_pct != null && (
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>
+                        This system uses {h.utilisation_pct.toFixed(1)}% of what
+                        this connection point can host
+                      </span>
+                      <span className="font-mono">
+                        {h.requested_new_pv_kw.toFixed(1)} / {h.hosting_capacity_kw.toFixed(0)} kW
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className={`h-full rounded-full ${bar}`}
+                        style={{ width: `${Math.max(1.5, used)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="mt-3 text-xs text-slate-500">
+                  {h.saturated
+                    ? "No hard limit was reached within the searched range, so the figure above is a floor rather than the true limit."
+                    : `What binds first: ${h.limiting_reason}.`}
+                </p>
+                {h.existing_pv_kw > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Computed with the {h.existing_pv_kw.toFixed(1)} kW already
+                    connected here taken into account.
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* ---- the simulation, in brief ---- */}
       <details className="card" open={engineering.engineering_risk !== "SAFE"}>
         <summary className="cursor-pointer list-none">

@@ -392,124 +392,6 @@ export default function NewApplicationPage() {
           </p>
         </div>
 
-        {/* ---- 3D Rooftop Solar Placement & Real-Time Sunlight Analysis ---- */}
-        <div className="card space-y-4">
-          <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-            <span>🛰️</span> 3D Rooftop Solar Placement & Real-Time Sunlight Analysis
-          </h2>
-
-          <SolarPlanner
-            latitude={Number(form.latitude) || 18.5204}
-            longitude={Number(form.longitude) || 73.8567}
-            initialCapacityKw={Number(form.new_pv_kw) || 5}
-            pvBus={connectionPoint?.pv_bus ?? "734"}
-            roofAreaSqm={Number(form.roof_area_sqm) || null}
-            onUsePlacement={(placement) => {
-              setSolarPlacement(placement);
-              setForm((f) => ({
-                ...f,
-                latitude: placement.latitude.toFixed(6),
-                longitude: placement.longitude.toFixed(6),
-                new_pv_kw: placement.capacity_kw.toFixed(1),
-                roof_area_sqm: placement.array_area_sqm.toFixed(1),
-                shading_level: placement.suitability === "GOOD" ? "Low" : placement.suitability === "PARTIAL" ? "Medium" : "High",
-              }));
-            }}
-          />
-        </div>
-
-        {/* ---- Connection and roof ---- */}
-        <div className="card space-y-4">
-          <h2 className="text-sm font-semibold text-slate-200">Consumption and roof</h2>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label" htmlFor="connection_type">
-                Connection type
-                <Required />
-              </label>
-              <select
-                id="connection_type"
-                required
-                className="input"
-                value={form.connection_type}
-                onChange={(e) => set("connection_type", e.target.value)}
-              >
-                <option>Residential</option>
-                <option>Commercial</option>
-                <option>Institutional</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="monthly_consumption_kwh">
-                Monthly consumption (kWh)
-                <Required />
-              </label>
-              <input
-                id="monthly_consumption_kwh"
-                required
-                type="number"
-                min="0"
-                step="1"
-                placeholder="From a recent electricity bill"
-                className="input"
-                value={form.monthly_consumption_kwh}
-                onChange={(e) => set("monthly_consumption_kwh", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="roof_area_sqm">
-                Roof area (m²)
-                <Required />
-              </label>
-              <input
-                id="roof_area_sqm"
-                required
-                type="number"
-                min="1"
-                step="0.5"
-                className="input"
-                value={form.roof_area_sqm}
-                onChange={(e) => set("roof_area_sqm", e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="roof_type">
-                Roof type
-                <Required />
-              </label>
-              <select
-                id="roof_type"
-                required
-                className="input"
-                value={form.roof_type}
-                onChange={(e) => set("roof_type", e.target.value)}
-              >
-                <option>RCC flat</option>
-                <option>Metal sheet</option>
-                <option>Tiled</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="shading_level">
-                Shading
-                <Required />
-              </label>
-              <select
-                id="shading_level"
-                required
-                className="input"
-                value={form.shading_level}
-                onChange={(e) => set("shading_level", e.target.value)}
-              >
-                <option>Low</option>
-                <option>Medium</option>
-                <option>High</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
         {/* ---- Technical ---- */}
         <div className="card space-y-4">
           <h2 className="text-sm font-semibold text-slate-200">
@@ -649,6 +531,126 @@ export default function NewApplicationPage() {
               </>
             )}
           </div>
+        </div>
+
+        {/* ---- Connection and roof ---- */}
+        <div className="card space-y-4">
+          <h2 className="text-sm font-semibold text-slate-200">Consumption and roof</h2>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="connection_type">
+                Connection type
+                <Required />
+              </label>
+              <select
+                id="connection_type"
+                required
+                className="input"
+                value={form.connection_type}
+                onChange={(e) => set("connection_type", e.target.value)}
+              >
+                <option>Residential</option>
+                <option>Commercial</option>
+                <option>Institutional</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="monthly_consumption_kwh">
+                Monthly consumption (kWh)
+                <Required />
+              </label>
+              <input
+                id="monthly_consumption_kwh"
+                required
+                type="number"
+                min="0"
+                step="1"
+                placeholder="From a recent electricity bill"
+                className="input"
+                value={form.monthly_consumption_kwh}
+                onChange={(e) => set("monthly_consumption_kwh", e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="roof_area_sqm">
+                Roof area (m²)
+                <Required />
+              </label>
+              <input
+                id="roof_area_sqm"
+                required
+                type="number"
+                min="1"
+                step="0.5"
+                className="input"
+                value={form.roof_area_sqm}
+                onChange={(e) => set("roof_area_sqm", e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label" htmlFor="roof_type">
+                Roof type
+                <Required />
+              </label>
+              <select
+                id="roof_type"
+                required
+                className="input"
+                value={form.roof_type}
+                onChange={(e) => set("roof_type", e.target.value)}
+              >
+                <option>RCC flat</option>
+                <option>Metal sheet</option>
+                <option>Tiled</option>
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="shading_level">
+                Shading
+                <Required />
+              </label>
+              <select
+                id="shading_level"
+                required
+                className="input"
+                value={form.shading_level}
+                onChange={(e) => set("shading_level", e.target.value)}
+              >
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+
+        {/* ---- 3D Rooftop Solar Placement & Real-Time Sunlight Analysis ---- */}
+        <div className="card space-y-4">
+          <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+            <span>🛰️</span> 3D Rooftop Solar Placement & Real-Time Sunlight Analysis
+          </h2>
+
+          <SolarPlanner
+            latitude={Number(form.latitude) || 18.5204}
+            longitude={Number(form.longitude) || 73.8567}
+            initialCapacityKw={Number(form.new_pv_kw) || 5}
+            pvBus={connectionPoint?.pv_bus ?? "734"}
+            roofAreaSqm={Number(form.roof_area_sqm) || null}
+            onCapacityChange={(kw) => set("new_pv_kw", kw.toFixed(1))}
+            onUsePlacement={(placement) => {
+              setSolarPlacement(placement);
+              setForm((f) => ({
+                ...f,
+                latitude: placement.latitude.toFixed(6),
+                longitude: placement.longitude.toFixed(6),
+                new_pv_kw: placement.capacity_kw.toFixed(1),
+                roof_area_sqm: placement.array_area_sqm.toFixed(1),
+                shading_level: placement.suitability === "GOOD" ? "Low" : placement.suitability === "PARTIAL" ? "Medium" : "High",
+              }));
+            }}
+          />
         </div>
 
         {/* ---- Submit ---- */}

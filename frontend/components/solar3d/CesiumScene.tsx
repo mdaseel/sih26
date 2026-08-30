@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { modulePositions, type ArrayLayout } from "@/lib/solar/array";
 import { sunPosition } from "@/lib/solar/sun";
+import { rayOpacityFor, skyLabel } from "@/lib/solar/weather";
 import type { BuildingFootprint } from "@/lib/types";
 
 /**
@@ -99,6 +100,13 @@ export interface CesiumSceneProps {
   resetToken?: number;
   /** Mapped footprints to extrude. Null while they are still being fetched. */
   siteBuildings?: BuildingFootprint[] | null;
+  /** Draw the dashed sun-direction rays onto the array. */
+  showSunRays?: boolean;
+  /**
+   * Measured cloud cover, 0-100, or null when the forecast is unavailable.
+   * Fades the rays: an overcast sky should not be drawn as a bright one.
+   */
+  cloudCoverPct?: number | null;
 }
 
 /** Site overlay colours. Muted on purpose: this sits over aerial imagery and
@@ -140,6 +148,8 @@ export function CesiumScene({
   onLocationChange,
   resetToken = 0,
   siteBuildings = null,
+  showSunRays = true,
+  cloudCoverPct = null,
 }: CesiumSceneProps) {
   const container = useRef<HTMLDivElement>(null);
   // Cesium's own types would have to be loaded eagerly to name these, which
@@ -160,6 +170,7 @@ export function CesiumScene({
   const homeView = useRef<{ destination: any; heading: number; pitch: number } | null>(null);
   const riskEntity = useRef<any>(null);
   const buildingEntities = useRef<any[]>([]);
+  const sunRayEntities = useRef<any[]>([]);
   /** Height of the site's own building, metres above ground, from the data. */
   const siteRoofHeight = useRef<number | null>(null);
 
@@ -366,6 +377,7 @@ export function CesiumScene({
       viewer.current = null;
       arrayEntities.current = [];
       buildingEntities.current = [];
+      sunRayEntities.current = [];
       markerEntity.current = null;
       for (const observer of resizeObservers.current) observer.disconnect();
       resizeObservers.current = [];
@@ -701,6 +713,157 @@ export function CesiumScene({
     v.scene.requestRender?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, latitude, longitude, layout, tiltDeg, azimuthDeg, mountHeightM, surfaceTick]);
+
+  // ---- sun-direction rays ----
+  //
+  // Yellow dashed lines arriving on the array from wherever the sun actually
+  // is at the selected instant. Shadows already tell you the answer, but only
+  // once you have found something to cast one; the rays say which way to turn
+  // the array before you have worked that out.
+  //
+  // The direction is astronomy, computed by lib/solar/sun.ts from the NOAA
+  // algorithm for this date, time and coordinate — nothing here is chosen to
+  // look good. What the forecast contributes is how solid the rays are drawn:
+  // measured cloud cover fades them, so an overcast roof is not shown bathed
+  // in beam it is not receiving. Below the horizon nothing is drawn at all.
+  useEffect(() => {
+    const v = viewer.current;
+    const Cesium = cesium.current;
+    if (!ready || !v || !Cesium) return;
+
+    for (const entity of sunRayEntities.current) v.entities.remove(entity);
+    sunRayEntities.current = [];
+
+    if (!showSunRays) {
+      v.scene.requestRender?.();
+      return;
+    }
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    const sun = sunPosition(when, latitude, longitude);
+    if (sun.elevation <= 0) {
+      // Night. A ray drawn now would point through the planet.
+      v.scene.requestRender?.();
+      return;
+    }
+
+    const el = (sun.elevation * Math.PI) / 180;
+    const az = (sun.azimuth * Math.PI) / 180;
+
+    // Unit vector from the array towards the sun, local east-north-up.
+    const dirEast = Math.cos(el) * Math.sin(az);
+    const dirNorth = Math.cos(el) * Math.cos(az);
+    const dirUp = Math.sin(el);
+
+    // Horizontal direction across the beam, to space the rays out.
+    const acrossEast = Math.cos(az);
+    const acrossNorth = -Math.sin(az);
+
+    const metresPerDegLat = 111_320;
+    const metresPerDegLon = 111_320 * Math.cos((latitude * Math.PI) / 180);
+
+    const base = (surfaceHeight.current ?? 0) + mountHeightM;
+    const span = Math.max(layout.footprintWidthM, layout.footprintLengthM);
+    // Long enough to read as coming from off-roof, short enough to stay in
+    // frame at the opening camera range.
+    const rayLengthM = Math.min(70, Math.max(16, span * 1.6));
+
+    const at = (east: number, north: number, up: number) =>
+      Cesium.Cartesian3.fromDegrees(
+        longitude + east / metresPerDegLon,
+        latitude + north / metresPerDegLat,
+        base + up
+      );
+
+    const alpha = rayOpacityFor(cloudCoverPct);
+    const yellow = Cesium.Color.fromCssColorString("#facc15").withAlpha(alpha);
+    const dashed = new Cesium.PolylineDashMaterialProperty({
+      color: yellow,
+      dashLength: 10,
+    });
+
+    // Rays land across the width of the array rather than all on one point,
+    // so the whole block is visibly lit from the same side.
+    const lanes = layout.panelCount > 6 ? [-1, -0.5, 0, 0.5, 1] : [-1, 0, 1];
+    const laneStepM = Math.max(1.2, layout.footprintWidthM / 2);
+
+    for (const lane of lanes) {
+      const offEast = acrossEast * lane * laneStepM;
+      const offNorth = acrossNorth * lane * laneStepM;
+
+      const target = at(offEast, offNorth, 0.15);
+      const origin = at(
+        offEast + dirEast * rayLengthM,
+        offNorth + dirNorth * rayLengthM,
+        dirUp * rayLengthM
+      );
+      // The arrowhead is the last stretch of the same line, drawn solid so it
+      // reads as a direction rather than another dash.
+      const elbowFraction = 0.82;
+      const elbow = at(
+        offEast + dirEast * rayLengthM * (1 - elbowFraction),
+        offNorth + dirNorth * rayLengthM * (1 - elbowFraction),
+        dirUp * rayLengthM * (1 - elbowFraction) + 0.15
+      );
+
+      sunRayEntities.current.push(
+        v.entities.add({
+          polyline: {
+            positions: [origin, elbow],
+            width: 2,
+            material: dashed,
+            arcType: Cesium.ArcType.NONE,
+          },
+        }),
+        v.entities.add({
+          polyline: {
+            positions: [elbow, target],
+            width: 9,
+            material: new Cesium.PolylineArrowMaterialProperty(yellow),
+            arcType: Cesium.ArcType.NONE,
+          },
+        })
+      );
+    }
+
+    // One caption, on the middle ray, saying where the sun is and what the sky
+    // is doing. Both are measurements; neither is rounded into a claim.
+    sunRayEntities.current.push(
+      v.entities.add({
+        position: at(dirEast * rayLengthM, dirNorth * rayLengthM, dirUp * rayLengthM + 1.5),
+        label: {
+          text:
+            `Sunlight ${Math.round(sun.azimuth)}° · ${Math.round(sun.elevation)}° above horizon` +
+            (cloudCoverPct != null
+              ? `
+${skyLabel(cloudCoverPct)} · ${Math.round(cloudCoverPct)}% cloud`
+              : ""),
+          font: "500 13px Poppins, system-ui, sans-serif",
+          fillColor: Cesium.Color.fromCssColorString("#facc15"),
+          outlineColor: Cesium.Color.fromCssColorString("#0f172a"),
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+          verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance: new Cesium.NearFarScalar(50, 1.0, 600, 0.55),
+        },
+      })
+    );
+
+    v.scene.requestRender?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    ready,
+    latitude,
+    longitude,
+    when,
+    layout,
+    mountHeightM,
+    showSunRays,
+    cloudCoverPct,
+    surfaceTick,
+  ]);
 
   // ---- risk overlay on the site ----
   //

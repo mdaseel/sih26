@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isHalted, resolveStages, stageIndexFor, STAGES, TERMINAL } from "./tracking";
+import { isHalted, outcomeFor, resolveStages, stageIndexFor, STAGES, TERMINAL } from "./tracking";
 import type { ApplicationStatus, StatusHistoryRow } from "./types";
 
 let seq = 0;
@@ -145,7 +145,12 @@ describe("resolveStages", () => {
     const stages = resolveStages("VERIFIED", []);
 
     expect(stateOf(stages, "verified")).toBe("current");
-    expect(stages.slice(0, -1).every((s) => s.state === "done")).toBe(true);
+    // The decision reads "passed" rather than "done": it was an approval, and
+    // that is the one step whose outcome the applicant came to check.
+    expect(stateOf(stages, "decision")).toBe("passed");
+    expect(
+      stages.slice(0, -1).every((s) => s.state === "done" || s.state === "passed")
+    ).toBe(true);
   });
 
   it("copes with an empty history without claiming anything happened", () => {
@@ -174,5 +179,54 @@ describe("TERMINAL", () => {
     ] as ApplicationStatus[]) {
       expect(TERMINAL).not.toContain(status);
     }
+  });
+});
+
+
+describe("naming the decision", () => {
+  // The bug: a rejection said "Rejected by the DISCOM" while an approval fell
+  // through to the stage label and read as the single word "Decision" — on the
+  // one screen opened to find out whether the application was approved.
+  it("names an approval", () => {
+    expect(outcomeFor("APPROVED")).toBe("approved");
+  });
+
+  it("still counts as approved further down the process", () => {
+    for (const status of [
+      "VENDOR_SELECTED",
+      "INSTALLING",
+      "INSTALLED",
+      "VERIFIED",
+    ] as const) {
+      expect(outcomeFor(status)).toBe("approved");
+    }
+  });
+
+  it("names a rejection and a cancellation separately", () => {
+    expect(outcomeFor("REJECTED")).toBe("rejected");
+    expect(outcomeFor("CANCELLED")).toBe("cancelled");
+  });
+
+  it("claims no outcome before the DISCOM has decided", () => {
+    for (const status of [
+      "DRAFT",
+      "SUBMITTED",
+      "ASSESSING",
+      "ASSESSED",
+      "UNDER_DISCOM_REVIEW",
+    ] as const) {
+      expect(outcomeFor(status)).toBeNull();
+    }
+  });
+
+  it("marks the decision stage passed on approval, stopped on rejection", () => {
+    expect(stateOf(resolveStages("APPROVED", []), "decision")).toBe("passed");
+    expect(stateOf(resolveStages("REJECTED", []), "decision")).toBe("stopped");
+  });
+
+  it("does not strand an approved application inside the decision stage", () => {
+    // "current" on the decision stage says the DISCOM is still deciding.
+    const stages = resolveStages("APPROVED", []);
+    expect(stateOf(stages, "decision")).not.toBe("current");
   });
 });

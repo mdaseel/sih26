@@ -17,6 +17,7 @@ written to the database. There is no second code path that could drift.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -43,6 +44,8 @@ from app.services.risk_assessment import get_risk_service
 from app.services.site_context import get_site_context_service
 from app.services.topology import get_topology_service
 
+logger = logging.getLogger("solargrid.api")
+
 router = APIRouter(prefix="/api")
 
 # Statuses an application can still be moved out of by a re-assessment. Once
@@ -63,6 +66,50 @@ PRE_DECISION_STATUSES = frozenset(
 # ============================================================
 #  Core engineering pipeline — the single source of truth
 # ============================================================
+def _headroom(pv_bus: str, existing_pv_kw: float, new_pv_kw: float) -> dict[str, Any] | None:
+    """Spare capacity at the connection point, alongside the verdict.
+
+    A verdict answers "may this connect?". It does not answer "by how much?",
+    and those come apart constantly: 5 kW at a bus limited to 50 kW and 5 kW at
+    a bus limited to 538 kW are both SAFE and are not the same situation. The
+    second number is the one that varies across this feeder, so withholding it
+    leaves the reader with the least informative half of the result.
+
+    Bisection is cached per (bus, existing PV), so a repeat assessment of the
+    same connection point costs nothing. On the first call it is roughly a
+    dozen extra power flows.
+
+    Returns None rather than raising. Headroom is additional context; failing
+    to compute it must not deny someone the verdict they asked for, and a
+    missing figure is reported as missing rather than as a comfortable one.
+    """
+    from app.services.hosting_capacity import get_hosting_capacity_service
+
+    try:
+        capacity = get_hosting_capacity_service().capacity_for(pv_bus, existing_pv_kw)
+    except Exception:  # noqa: BLE001 - context only; never fails the assessment
+        logger.warning("hosting capacity unavailable for bus %s", pv_bus, exc_info=True)
+        return None
+
+    limit = capacity.hosting_capacity_kw
+    return {
+        "bus_id": capacity.bus_id,
+        "hosting_capacity_kw": limit,
+        "existing_pv_kw": existing_pv_kw,
+        "requested_new_pv_kw": new_pv_kw,
+        "headroom_after_kw": round(limit - new_pv_kw, 2),
+        # Existing PV is already inside the capacity figure — capacity_for was
+        # asked for the limit *given* it — so utilisation is the new request
+        # against what remains, not against the whole bus.
+        "utilisation_pct": round(100.0 * new_pv_kw / limit, 1) if limit > 0 else None,
+        "limiting_constraint": capacity.limiting_constraint,
+        "limiting_reason": capacity.limiting_reason,
+        "saturated": capacity.saturated,
+        "method": capacity.method,
+    }
+
+
+
 def run_assessment(pv_bus: str, existing_pv_kw: float, new_pv_kw: float) -> dict[str, Any]:
     """ML pre-screen, then deterministic power flow, then the engineering verdict.
 
@@ -91,6 +138,7 @@ def run_assessment(pv_bus: str, existing_pv_kw: float, new_pv_kw: float) -> dict
         "ml": ml.as_dict() | {"prediction": ml.prediction.value},
         "engineering": verdict.as_dict(),
         "metrics": metrics.as_dict(),
+        "headroom": _headroom(pv_bus, existing_pv_kw, new_pv_kw),
         "ml_agrees_with_engineering": ml.prediction == verdict.engineering_risk,
         "_ml_obj": ml,
         "_verdict_obj": verdict,
@@ -103,6 +151,7 @@ def _to_out(result: dict[str, Any], **ids: Any) -> AssessmentOut:
         ml=result["ml"],
         engineering=result["engineering"],
         metrics=result["metrics"],
+        headroom=result.get("headroom"),
         ml_agrees_with_engineering=result["ml_agrees_with_engineering"],
         **ids,
     )
@@ -574,9 +623,35 @@ def _stored_assessment(application_id: str) -> AssessmentOut | None:
             "thresholds_snapshot": risk.get("thresholds_snapshot") or {},
         },
         metrics={k: v for k, v in sim.items() if k in metric_fields},
+        # Headroom was never stored. It is recomputed here against the network
+        # as it stands today, and labelled as such: the capacity left at a bus
+        # is a question about now, not about the afternoon the assessment ran.
+        headroom=_stored_headroom(sim),
         ml_agrees_with_engineering=bool(risk["ml_agrees_with_engineering"]),
         persisted=True,
     )
+
+
+def _stored_headroom(sim: dict[str, Any]) -> dict[str, Any] | None:
+    """Headroom for a stored assessment, or None if the simulation row is thin.
+
+    Guarded rather than assumed: an older simulation row that does not carry
+    the bus and the capacities gives no basis for the figure, and the card is
+    dropped instead of being filled with defaults.
+    """
+    bus = sim.get("pv_bus")
+    if bus is None:
+        return None
+    try:
+        existing = float(sim.get("existing_pv_kw") or 0.0)
+        requested = float(sim["new_pv_kw"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    headroom = _headroom(str(bus), existing, requested)
+    if headroom is None:
+        return None
+    return headroom | {"as_of": "current"}
 
 
 @router.get("/applications/{application_id}/timeline", tags=["applications"])

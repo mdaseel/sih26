@@ -39,6 +39,14 @@ export interface MLPrediction {
   model_file: string;
   model_version: string;
   feature_count: number;
+  /**
+   * The 18 inputs the forest was given. Pre-simulation only: bus identity,
+   * declared capacities and the network constants for that connection point.
+   * The power-flow results are deliberately not among them.
+   */
+  features_used: Record<string, number | string>;
+  /** How many trees voted. Read from the fitted model, not assumed. */
+  tree_count: number | null;
 }
 
 export interface EngineeringVerdict {
@@ -137,6 +145,37 @@ export interface SolarApplication {
   status: ApplicationStatus;
   solar_placement?: Record<string, unknown> | null;
   created_at: string;
+}
+
+/**
+ * The connection point resolved for an address, with the grid data attached.
+ *
+ * `provisional` is not decoration. The feeder is a synthetic research network
+ * whose buses were given map coordinates at an arbitrary anchor, so the
+ * assignment is a real computation over a layout that is not where any of this
+ * physically is. The DISCOM confirms the actual connection point.
+ */
+export interface ConnectionPoint {
+  pv_bus: string;
+  assignment_method: "NEAREST_MAPPED_BUS" | "FALLBACK_FIRST_ELIGIBLE";
+  /** Distance from the applicant's coordinates to the assigned bus, km. */
+  separation_km: number | null;
+  provisional: boolean;
+  note: string;
+
+  voltage_level_kv: number;
+  voltage_level_label: string | null;
+  phase_configuration: string | null;
+  transformer: string;
+  transformer_sn_kva: number;
+  feeder_section: string;
+  connected_load_kw: number;
+  base_voltage_pu: number;
+  feeder_distance_km: number;
+  upstream_r_ohm: number;
+  upstream_x_ohm: number;
+  upstream_z_ohm: number;
+  data_source: string;
 }
 
 export interface Bus {

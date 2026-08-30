@@ -45,8 +45,14 @@ class ApplicationCreate(BaseModel):
     roof_type: str | None = None
     shading_level: str | None = None
 
-    # The technical inputs the engineering layers consume
-    pv_bus: str = Field(min_length=1, max_length=16)
+    # The technical inputs the engineering layers consume.
+    #
+    # pv_bus is optional because a householder cannot know it: which LV bus
+    # serves an address is a DISCOM record, not something on an electricity
+    # bill. When it is absent the backend resolves it from latitude/longitude
+    # (see ConnectionPointService) and stores what it resolved. A client that
+    # does know the bus — the DISCOM's own tooling — may still send one.
+    pv_bus: str | None = Field(default=None, min_length=1, max_length=16)
     existing_pv_kw: float = Field(default=0.0, ge=0, le=5000)
     new_pv_kw: float = Field(gt=0, le=5000)
 
@@ -56,7 +62,9 @@ class ApplicationCreate(BaseModel):
 
     @field_validator("pv_bus")
     @classmethod
-    def _bus_is_digits(cls, v: str) -> str:
+    def _bus_is_digits(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         v = v.strip()
         if not v.isdigit():
             raise ValueError("pv_bus must be a numeric bus identifier, e.g. '734'")
@@ -90,6 +98,16 @@ class MLPredictionOut(BaseModel):
     model_file: str
     model_version: str
     feature_count: int
+
+    # What the forest was given, and how many trees voted on it.
+    #
+    # Pre-simulation inputs only: bus identity, declared capacities, and the
+    # network constants for that connection point. Deliberately absent are the
+    # power-flow results — the model predicts from what is known beforehand, and
+    # feeding it the answer would make the comparison with the simulation
+    # meaningless.
+    features_used: dict[str, Any] = Field(default_factory=dict)
+    tree_count: int | None = None
 
 
 class EngineeringMetricsOut(BaseModel):

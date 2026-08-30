@@ -8,6 +8,7 @@ import type {
   CFAEstimate,
   Bus,
   CitizenMapData,
+  ConnectionPoint,
   GridSummary,
   DecisionResult,
   DiscomApplication,
@@ -116,6 +117,18 @@ export const api = {
   gridSummary: () => request<GridSummary>("/api/grid/summary"),
 
   buses: () => request<Bus[]>("/api/grid/buses"),
+
+  /**
+   * The connection point that will screen this address.
+   *
+   * The form asks for a location, not a bus: which LV bus serves an address is
+   * a DISCOM record and not something on an electricity bill. One rule decides
+   * it, on the server, for every application.
+   */
+  connectionPoint: (latitude: number, longitude: number) =>
+    request<ConnectionPoint>(
+      `/api/grid/connection-point?latitude=${latitude}&longitude=${longitude}`
+    ),
 
   siteBuildings: (latitude: number, longitude: number) =>
     request<{

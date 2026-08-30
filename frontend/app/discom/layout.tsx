@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { discomApi } from "@/lib/api";
+import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/lib/supabase";
 import type { Me } from "@/lib/types";
 
@@ -80,53 +81,17 @@ export default function DiscomLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-800 bg-slate-950/80">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-6 py-3">
-          <Link href="/discom/dashboard" className="flex items-center gap-2">
-            <span className="text-lg font-semibold text-slate-100">
-              SolarGrid<span className="text-amber-400"> DISCOM</span>
-            </span>
-            <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-              Prototype
-            </span>
-          </Link>
-
-          <nav className="flex flex-1 flex-wrap gap-1">
-            {LINKS.map((l) => (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`rounded-lg px-2.5 py-1.5 text-sm transition ${
-                  pathname === l.href
-                    ? "bg-slate-800 text-slate-100"
-                    : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
-                }`}
-              >
-                {l.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span className="hidden sm:inline">{me?.email}</span>
-            <span className="rounded border border-amber-900 bg-amber-950/40 px-2 py-0.5 text-amber-300">
-              {me?.role}
-            </span>
-            <button
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.replace("/login");
-              }}
-              className="btn-ghost !px-3 !py-1.5 !text-xs"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-6 py-8">{children}</main>
-    </div>
+    <AppShell
+      links={LINKS}
+      badge="DISCOM"
+      homeHref="/discom/dashboard"
+      email={me?.email ?? null}
+      onSignOut={async () => {
+        await supabase.auth.signOut();
+        router.replace("/login");
+      }}
+    >
+      {children}
+    </AppShell>
   );
 }

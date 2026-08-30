@@ -58,6 +58,7 @@ class MLPrediction:
     model_version: str
     feature_count: int
     features_used: dict[str, Any]
+    tree_count: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -68,6 +69,15 @@ class MLPrediction:
             "model_file": self.model_file,
             "model_version": self.model_version,
             "feature_count": self.feature_count,
+            # The inputs the forest actually saw, and how many trees voted.
+            #
+            # These were computed and then discarded, which left the UI able to
+            # say only "18 features" without being able to show one of them. A
+            # citizen reading a risk verdict is entitled to see what it was
+            # derived from, and every value here is an input the model was
+            # given -- not an output, and not a measurement of the network.
+            "features_used": self.features_used,
+            "tree_count": self.tree_count,
         }
 
 
@@ -149,7 +159,25 @@ class MLPredictionService:
             model_version=self.MODEL_VERSION,
             feature_count=len(self._features),
             features_used=feats,
+            tree_count=self.tree_count,
         )
+
+    @property
+    def tree_count(self) -> int | None:
+        """How many trees vote. Read from the fitted estimator, never assumed —
+        a retrained model with a different forest size must not be described
+        with a stale number."""
+        node: Any = self._model
+        seen = 0
+        while node is not None and seen < 5:
+            if hasattr(node, "n_estimators"):
+                return int(node.n_estimators)
+            steps = getattr(node, "named_steps", None)
+            if not steps:
+                return None
+            node = list(steps.values())[-1]
+            seen += 1
+        return None
 
     @property
     def feature_names(self) -> list[str]:

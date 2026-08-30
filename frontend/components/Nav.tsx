@@ -1,16 +1,18 @@
-"use client";
+import type { NavLink } from "@/components/AppShell";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-
-import { supabase } from "@/lib/supabase";
-
-// No Grid twin here. Exploring the feeder is a DISCOM activity; for a citizen
-// the twin is only meaningful as an explanation of their own decided
-// application, which is where it now appears. The explorer remains at
-// /discom/grid-twin for the role that reads it.
-const LINKS = [
+/**
+ * The citizen portal's sections.
+ *
+ * Only the list lives here now. The header this file used to render was one of
+ * three near-identical copies across the portals; AppShell draws all of them,
+ * and each portal supplies its own links.
+ *
+ * No Grid twin entry. Exploring the feeder is a DISCOM activity; for a citizen
+ * the twin is only meaningful as an explanation of their own decided
+ * application, which is where it appears. The explorer remains at
+ * /discom/grid-twin for the role that reads it.
+ */
+export const CITIZEN_LINKS: NavLink[] = [
   { href: "/citizen/dashboard", label: "Dashboard" },
   { href: "/citizen/applications", label: "My applications" },
   { href: "/citizen/applications/new", label: "New application" },
@@ -18,59 +20,3 @@ const LINKS = [
   { href: "/citizen/vendors", label: "Installers" },
   { href: "/citizen/scheme", label: "PM Surya Ghar" },
 ];
-
-export function Nav() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
-  }, []);
-
-  async function signOut() {
-    await supabase.auth.signOut();
-    router.replace("/login");
-  }
-
-  return (
-    <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-6 py-3">
-        <Link href="/citizen/dashboard" className="flex items-center gap-2">
-          <span className="text-lg font-semibold text-slate-100">
-            SolarGrid<span className="text-sky-400"> AI</span>
-          </span>
-          <span className="rounded border border-slate-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-slate-500">
-            Prototype
-          </span>
-        </Link>
-
-        <nav className="flex flex-1 flex-wrap gap-1">
-          {LINKS.map((l) => {
-            const active = pathname === l.href;
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`rounded-lg px-3 py-1.5 text-sm transition ${
-                  active
-                    ? "bg-slate-800 text-slate-100"
-                    : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
-                }`}
-              >
-                {l.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          {email && <span className="hidden sm:inline">{email}</span>}
-          <button onClick={signOut} className="btn-ghost !px-3 !py-1.5 !text-xs">
-            Sign out
-          </button>
-        </div>
-      </div>
-    </header>
-  );
-}

@@ -31,6 +31,7 @@ from app.models.schemas import (
     BusOut,
     EngineeringMetricsOut,
 )
+from app.services.connection_point import get_connection_point_service
 from app.services.grid_assets import (
     IneligibleBusError,
     UnknownBusError,
@@ -151,6 +152,25 @@ def grid_local_topology(bus_id: str) -> dict[str, Any]:
     if not view["nodes"]:
         raise HTTPException(status_code=404, detail=f"No path to bus {bus_id}")
     return view
+
+
+@router.get("/grid/connection-point", tags=["grid"])
+def connection_point(latitude: float, longitude: float) -> dict[str, Any]:
+    """The connection point that will screen an address, and its grid data.
+
+    A citizen knows their address; they do not know which LV bus serves them.
+    This resolves it so the application form can stop asking, and returns the
+    voltage level, transformer, connected load and impedance that the power
+    flow will use — read from the feeder model, not inferred.
+
+    The assignment is provisional and says so: see ConnectionPointService.
+    """
+    if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        raise HTTPException(status_code=422, detail="Coordinates are out of range")
+    try:
+        return get_connection_point_service().resolve(latitude, longitude)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/site-context", tags=["gis"])
@@ -404,8 +424,34 @@ def create_application(
     payload: ApplicationCreate, user: CurrentUser = Depends(get_current_user)
 ) -> dict[str, Any]:
     grid = get_grid_asset_service()
+
+    # Resolve the connection point when the applicant did not give one.
+    #
+    # They normally cannot: which LV bus serves an address is a DISCOM record.
+    # The form asks for a location instead, and the assignment is made here so
+    # that exactly one rule decides it, on the server, for every application —
+    # rather than each client inventing its own. It is provisional, and the
+    # DISCOM confirms it on review.
+    pv_bus = payload.pv_bus
+    if pv_bus is None:
+        if payload.latitude is None or payload.longitude is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Either a connection point or the site's latitude and longitude "
+                    "is required, so the application can be screened against the "
+                    "right part of the network."
+                ),
+            )
+        try:
+            pv_bus = get_connection_point_service().resolve(
+                payload.latitude, payload.longitude
+            )["pv_bus"]
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     try:
-        bus = grid.get(payload.pv_bus)
+        bus = grid.get(pv_bus)
     except UnknownBusError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except IneligibleBusError as exc:
@@ -413,6 +459,8 @@ def create_application(
 
     row = payload.model_dump(exclude={"submit"})
     row["applicant_id"] = user.id
+    # Store what was actually used, not the null that may have arrived.
+    row["pv_bus"] = bus.bus_id
 
     # The load figure comes from the grid, not from the applicant.
     #
@@ -460,6 +508,21 @@ def get_application(
     return {"application": app_row, "latest_assessment": db.get_latest_assessment(application_id)}
 
 
+def _stored_features(sim: dict[str, Any]) -> dict[str, Any]:
+    """The inputs the model saw, rebuilt from the simulation's own record."""
+    try:
+        service = get_ml_service()
+        bus = get_grid_asset_service().get(str(sim["pv_bus"]))
+        return {
+            "features_used": service.build_features(
+                bus, float(sim["existing_pv_kw"]), float(sim["new_pv_kw"])
+            ),
+            "tree_count": service.tree_count,
+        }
+    except Exception:  # noqa: BLE001 - a missing input panel is not a failed read
+        return {}
+
+
 def _stored_assessment(application_id: str) -> AssessmentOut | None:
     """Rebuild the canonical assessment shape from what was stored.
 
@@ -494,6 +557,15 @@ def _stored_assessment(application_id: str) -> AssessmentOut | None:
             "model_file": risk["model_file"],
             "model_version": risk["model_version"],
             "feature_count": int(risk["feature_count"]),
+            # Rebuilt, not re-predicted.
+            #
+            # The recorded probabilities above are what the model actually said
+            # and are never recomputed. The feature vector is not stored, but it
+            # is a pure function of the bus and the two capacities -- a table
+            # lookup over the feeder model with no simulation in it -- so it can
+            # be reconstructed to show what the model was given. If the lookup
+            # fails the block is simply omitted rather than guessed at.
+            **_stored_features(sim),
         },
         engineering={
             "engineering_risk": risk["engineering_risk"],

@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Nav } from "@/components/Nav";
+import { AppShell } from "@/components/AppShell";
+import { CITIZEN_LINKS } from "@/components/Nav";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -21,6 +22,12 @@ export default function CitizenLayout({
 }) {
   const router = useRouter();
   const [state, setState] = useState<"checking" | "in">("checking");
+  const [email, setEmail] = useState<string | null>(null);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
 
   useEffect(() => {
     let active = true;
@@ -28,6 +35,7 @@ export default function CitizenLayout({
     supabase.auth.getSession().then(({ data }) => {
       if (!active) return;
       if (data.session) {
+        setEmail(data.session.user?.email ?? null);
         setState("in");
       } else {
         router.replace("/login");
@@ -53,9 +61,14 @@ export default function CitizenLayout({
   }
 
   return (
-    <div className="min-h-screen">
-      <Nav />
-      <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
-    </div>
+    <AppShell
+      links={CITIZEN_LINKS}
+      badge="Citizen"
+      homeHref="/citizen/dashboard"
+      email={email}
+      onSignOut={signOut}
+    >
+      {children}
+    </AppShell>
   );
 }

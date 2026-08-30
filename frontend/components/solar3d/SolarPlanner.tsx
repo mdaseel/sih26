@@ -116,14 +116,10 @@ export function SolarPlanner({
   onUsePlacement?: (placement: SolarPlacement) => void;
   panelSpec?: PanelSpec;
 }) {
-  const [latInput, setLatInput] = useState(String(initialLat));
-  const [lonInput, setLonInput] = useState(String(initialLon));
   const [latitude, setLatitude] = useState(initialLat);
   const [longitude, setLongitude] = useState(initialLon);
-  const [addressSearch, setAddressSearch] = useState("");
 
   const [capacityKw, setCapacityKw] = useState(initialCapacityKw);
-  const [roofType, setRoofType] = useState("Flat RCC Roof");
   const [tiltDeg, setTiltDeg] = useState(() => estimatedOptimalTilt(initialLat));
   const [azimuthDeg, setAzimuthDeg] = useState(() => optimalAzimuth(initialLat));
   const [mountHeightM, setMountHeightM] = useState(0.35);
@@ -156,22 +152,11 @@ export function SolarPlanner({
   useEffect(() => {
     setLatitude(initialLat);
     setLongitude(initialLon);
-    setLatInput(String(initialLat));
-    setLonInput(String(initialLon));
     setTiltDeg(estimatedOptimalTilt(initialLat));
     setAzimuthDeg(optimalAzimuth(initialLat));
   }, [initialLat, initialLon]);
 
   useEffect(() => setCapacityKw(initialCapacityKw), [initialCapacityKw]);
-
-  const handleApplyCoordinates = () => {
-    const lat = Number(latInput);
-    const lon = Number(lonInput);
-    if (!Number.isNaN(lat) && lat >= -90 && lat <= 90 && !Number.isNaN(lon) && lon >= -180 && lon <= 180) {
-      setLatitude(lat);
-      setLongitude(lon);
-    }
-  };
 
   const layout = useMemo(
     () => layoutFor(capacityKw, panelSpec, tiltDeg),
@@ -336,86 +321,47 @@ export function SolarPlanner({
       <div className="grid gap-5 lg:grid-cols-12">
         {/* Left Column: Input Panel & Solar Insights */}
         <div className="space-y-4 lg:col-span-3">
-          {/* Input Panel */}
+          {/* ---- what this application already says ---- */}
+          {/*
+            Read-only on purpose. The location, the capacity and the roof type
+            are fields on the application form a few centimetres up the page;
+            asking for them again here gave two inputs for one fact and no rule
+            about which won. The planner reflects the application, and the
+            application is edited in one place.
+          */}
           <div className="card space-y-3">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              Input Panel
+              This application
             </h3>
 
-            <div>
-              <label className="label text-xs">Enter Location (Lat / Lon)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={latInput}
-                  onChange={(e) => setLatInput(e.target.value)}
-                  placeholder="Latitude"
-                  className="input !py-1.5 !text-xs font-mono"
-                />
-                <input
-                  type="text"
-                  value={lonInput}
-                  onChange={(e) => setLonInput(e.target.value)}
-                  placeholder="Longitude"
-                  className="input !py-1.5 !text-xs font-mono"
-                />
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Location</span>
+                <span className="font-mono text-slate-300">
+                  {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                </span>
               </div>
-            </div>
-
-            <div>
-              <label className="label text-xs">Search Address</label>
-              <input
-                type="text"
-                value={addressSearch}
-                onChange={(e) => setAddressSearch(e.target.value)}
-                placeholder="Enter address..."
-                className="input !py-1.5 !text-xs"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleApplyCoordinates}
-              className="btn-primary w-full !py-2 !text-xs font-semibold"
-            >
-              Load 3D View
-            </button>
-
-            <hr className="border-slate-800" />
-
-            <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-slate-300">System Details</h4>
-              <div>
-                <div className="flex justify-between text-xs text-slate-400">
-                  <span>System Size</span>
-                  <span className="font-mono text-sky-400">{capacityKw} kW</span>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">System size</span>
+                <span className="font-mono text-sky-400">{capacityKw.toFixed(1)} kW</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Connection point</span>
+                <span className="font-mono text-slate-300">Bus {pvBus}</span>
+              </div>
+              {roofAreaSqm != null && (
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-500">Roof area</span>
+                  <span className="font-mono text-slate-300">{roofAreaSqm} m²</span>
                 </div>
-                <input
-                  type="range"
-                  min={MIN_NEW_PV_KW}
-                  max={MAX_NEW_PV_KW}
-                  step={0.5}
-                  value={capacityKw}
-                  onChange={(e) => setCapacityKw(Number(e.target.value))}
-                  className="w-full accent-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="label text-xs">Roof Type</label>
-                <select
-                  value={roofType}
-                  onChange={(e) => setRoofType(e.target.value)}
-                  className="input !py-1.5 !text-xs"
-                >
-                  <option value="Flat RCC Roof">Flat RCC Roof</option>
-                  <option value="Sloped Tile Roof">Sloped Tile Roof</option>
-                  <option value="Metal Sheet Roof">Metal Sheet Roof</option>
-                  <option value="Elevated Structure">Elevated Structure</option>
-                </select>
-              </div>
+              )}
             </div>
+
+            <p className="text-[11px] leading-relaxed text-slate-600">
+              Change any of these on the form above and the 3D view follows.
+            </p>
           </div>
+
 
           {/* Solar Insights Card */}
           <div className="card space-y-3 border-sky-900/40 bg-slate-900/60">
@@ -526,10 +472,12 @@ export function SolarPlanner({
               onStatus={handleStatus}
               onShading={handleShading}
               onLocationChange={(newLat, newLon) => {
+                // Dragging the marker moves the site within this view only. The
+                // application's own latitude/longitude stay the form's to own —
+                // two editable copies of one coordinate is what this panel was
+                // just cleaned up to avoid.
                 setLatitude(newLat);
                 setLongitude(newLon);
-                setLatInput(newLat.toFixed(6));
-                setLonInput(newLon.toFixed(6));
               }}
             />
 

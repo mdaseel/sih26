@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
-import type { Bus } from "@/lib/types";
+import type { ConnectionPoint } from "@/lib/types";
 import { SolarPlanner, type SolarPlacement } from "@/components/solar3d/SolarPlanner";
 
 /**
@@ -37,8 +37,6 @@ function Required() {
 export default function NewApplicationPage() {
   const router = useRouter();
 
-  const [buses, setBuses] = useState<Bus[] | null>(null);
-  const [busQuery, setBusQuery] = useState("");
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
 
@@ -57,38 +55,63 @@ export default function NewApplicationPage() {
     roof_area_sqm: "",
     roof_type: "RCC flat",
     shading_level: "Low",
-    pv_bus: "",
     existing_pv_kw: "0",
     new_pv_kw: "5",
   });
 
   const [solarPlacement, setSolarPlacement] = useState<SolarPlacement | null>(null);
+  const [connectionPoint, setConnectionPoint] = useState<ConnectionPoint | null>(null);
+  const [resolvingPoint, setResolvingPoint] = useState(false);
+  const [pointError, setPointError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const latNumber = Number(form.latitude);
+  const lonNumber = Number(form.longitude);
+  const hasCoordinates =
+    form.latitude.trim() !== "" &&
+    form.longitude.trim() !== "" &&
+    Number.isFinite(latNumber) &&
+    Number.isFinite(lonNumber) &&
+    Math.abs(latNumber) <= 90 &&
+    Math.abs(lonNumber) <= 180;
+
+  // Resolve the connection point from the location, debounced so that typing a
+  // coordinate does not fire a request per keystroke.
   useEffect(() => {
-    api
-      .buses()
-      .then(setBuses)
-      .catch((e: ApiError) => setError(e.message));
-  }, []);
+    if (!hasCoordinates) {
+      setConnectionPoint(null);
+      setPointError(null);
+      return;
+    }
+    let cancelled = false;
+    setResolvingPoint(true);
+    const timer = window.setTimeout(() => {
+      api
+        .connectionPoint(latNumber, lonNumber)
+        .then((point) => {
+          if (cancelled) return;
+          setConnectionPoint(point);
+          setPointError(null);
+        })
+        .catch((e: ApiError) => {
+          if (cancelled) return;
+          setConnectionPoint(null);
+          setPointError(
+            `Could not work out your connection point: ${e.message}. You can still submit — the DISCOM assigns it on review.`
+          );
+        })
+        .finally(() => {
+          if (!cancelled) setResolvingPoint(false);
+        });
+    }, 500);
 
-  const selectedBus = useMemo(
-    () => buses?.find((b) => b.bus_id === form.pv_bus) ?? null,
-    [buses, form.pv_bus]
-  );
-
-  const filteredBuses = useMemo(() => {
-    if (!buses) return [];
-    const q = busQuery.trim().toLowerCase();
-    if (!q) return buses;
-    return buses.filter(
-      (b) =>
-        b.bus_id.includes(q) ||
-        b.feeder_section.toLowerCase().includes(q) ||
-        b.transformer_association.toLowerCase().includes(q)
-    );
-  }, [buses, busQuery]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      setResolvingPoint(false);
+    };
+  }, [hasCoordinates, latNumber, lonNumber]);
 
   function set<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -140,7 +163,6 @@ export default function NewApplicationPage() {
     form.roof_area_sqm.trim() !== "" &&
     form.roof_type !== "" &&
     form.shading_level !== "" &&
-    form.pv_bus !== "" &&
     Number(form.new_pv_kw) > 0 &&
     !Number.isNaN(Number(form.new_pv_kw));
 
@@ -167,7 +189,6 @@ export default function NewApplicationPage() {
         roof_area_sqm: numeric(form.roof_area_sqm),
         roof_type: form.roof_type,
         shading_level: form.shading_level,
-        pv_bus: form.pv_bus,
         existing_pv_kw: Number(form.existing_pv_kw) || 0,
         new_pv_kw: Number(form.new_pv_kw),
         solar_placement: solarPlacement,
@@ -391,7 +412,7 @@ export default function NewApplicationPage() {
             latitude={Number(form.latitude) || 18.5204}
             longitude={Number(form.longitude) || 73.8567}
             initialCapacityKw={Number(form.new_pv_kw) || 5}
-            pvBus={form.pv_bus || "734"}
+            pvBus={connectionPoint?.pv_bus ?? "734"}
             roofAreaSqm={Number(form.roof_area_sqm) || null}
             onUsePlacement={(placement) => {
               setSolarPlacement(placement);
@@ -543,64 +564,101 @@ export default function NewApplicationPage() {
             </div>
           </div>
 
-          <div>
-            <label className="label" htmlFor="pv_bus">
-              Grid connection point ({buses?.length ?? "…"} eligible LV buses)
-              <Required />
-            </label>
-            <input
-              className="input mb-2"
-              placeholder="Search by bus, transformer or section…"
-              value={busQuery}
-              onChange={(e) => setBusQuery(e.target.value)}
-              aria-label="Filter connection points"
-            />
-            <select
-              id="pv_bus"
-              required
-              size={8}
-              className="input font-mono text-xs"
-              value={form.pv_bus}
-              onChange={(e) => set("pv_bus", e.target.value)}
-            >
-              <option value="" disabled>
-                Select a connection point
-              </option>
-              {filteredBuses.map((b) => (
-                <option key={b.bus_id} value={b.bus_id}>
-                  Bus {b.bus_id} · {b.vn_kv} kV · {b.transformer_association} ·{" "}
-                  {b.feeder_section}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedBus && (
-            <div className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs sm:grid-cols-4">
-              <div>
-                <div className="metric-label">Transformer</div>
-                <div className="text-slate-300">
-                  {selectedBus.transformer_association} · {selectedBus.transformer_sn_kva} kVA
-                </div>
-              </div>
-              <div>
-                <div className="metric-label">Connected load</div>
-                <div className="text-slate-300">{selectedBus.existing_load_kw} kW</div>
-              </div>
-              <div>
-                <div className="metric-label">Distance from source</div>
-                <div className="text-slate-300">
-                  {selectedBus.feeder_distance_km.toFixed(2)} km
-                </div>
-              </div>
-              <div>
-                <div className="metric-label">Upstream impedance</div>
-                <div className="text-slate-300">
-                  {selectedBus.upstream_z_ohm.toFixed(2)} Ω
-                </div>
-              </div>
+          {/* ---- connection point, resolved not asked ---- */}
+          <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium text-slate-200">
+                Your grid connection point
+              </h3>
+              {connectionPoint && (
+                <span className="rounded border border-amber-900 bg-amber-950/40 px-2 py-0.5 text-[11px] text-amber-200">
+                  Provisional — DISCOM confirms
+                </span>
+              )}
             </div>
-          )}
+
+            {!hasCoordinates && (
+              <p className="mt-2 text-xs text-slate-500">
+                Enter the site location above and this is filled in for you. You are
+                not expected to know which bus or transformer serves your address —
+                that is the DISCOM&apos;s record, not something on your bill.
+              </p>
+            )}
+
+            {hasCoordinates && resolvingPoint && (
+              <p className="mt-2 text-xs text-slate-500">Looking up your connection point…</p>
+            )}
+
+            {hasCoordinates && pointError && (
+              <p className="mt-2 text-xs text-amber-400">{pointError}</p>
+            )}
+
+            {connectionPoint && (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                  <div>
+                    <div className="metric-label">Connection point</div>
+                    <div className="font-mono text-sm text-slate-200">
+                      Bus {connectionPoint.pv_bus}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Voltage level</div>
+                    <div className="text-slate-300">{connectionPoint.voltage_level_kv} kV</div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Transformer</div>
+                    <div className="text-slate-300">
+                      {connectionPoint.transformer} · {connectionPoint.transformer_sn_kva} kVA
+                    </div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Feeder section</div>
+                    <div className="text-slate-300">{connectionPoint.feeder_section}</div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Connected load</div>
+                    <div className="text-slate-300">
+                      {connectionPoint.connected_load_kw} kW
+                    </div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Base voltage</div>
+                    <div className="text-slate-300">
+                      {connectionPoint.base_voltage_pu.toFixed(4)} pu
+                    </div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Distance from source</div>
+                    <div className="text-slate-300">
+                      {connectionPoint.feeder_distance_km.toFixed(2)} km
+                    </div>
+                  </div>
+                  <div>
+                    <div className="metric-label">Upstream impedance</div>
+                    <div className="text-slate-300">
+                      {connectionPoint.upstream_z_ohm.toFixed(2)} Ω
+                    </div>
+                  </div>
+                </div>
+
+                <p className="mt-3 text-[11px] leading-relaxed text-slate-600">
+                  {connectionPoint.note}
+                </p>
+
+                {connectionPoint.separation_km != null &&
+                  connectionPoint.separation_km > 25 && (
+                    <p className="mt-2 text-[11px] leading-relaxed text-amber-400">
+                      The nearest modelled connection point is{" "}
+                      {connectionPoint.separation_km.toFixed(0)} km from your site. The
+                      feeder in this prototype is a synthetic research network placed at
+                      a fixed anchor, so it does not cover your area — the screening
+                      still runs, but treat the electrical result as illustrative.
+                    </p>
+                  )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* ---- Submit ---- */}

@@ -35,10 +35,13 @@ export default function DiscomLayout({ children }: { children: React.ReactNode }
   const [me, setMe] = useState<Me | null>(null);
   const [state, setState] = useState<"checking" | "ok" | "denied">("checking");
 
+  const isAuthPage = pathname === "/discom/login";
+
   useEffect(() => {
+    if (isAuthPage) { setState("ok"); return; }
     supabase.auth.getSession().then(async ({ data }) => {
       if (!data.session) {
-        router.replace("/login");
+        router.replace("/discom/login");
         return;
       }
       try {
@@ -49,7 +52,9 @@ export default function DiscomLayout({ children }: { children: React.ReactNode }
         setState("denied");
       }
     });
-  }, [router]);
+  }, [router, isAuthPage, pathname]);
+
+  if (isAuthPage) return <>{children}</>;
 
   if (state === "checking") {
     return (

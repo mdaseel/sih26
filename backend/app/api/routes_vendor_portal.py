@@ -232,6 +232,128 @@ def update_installation(
     return updated
 
 
+@router.get("/vendor/opportunities")
+def vendor_opportunities(user: CurrentUser = Depends(get_current_user)) -> list[dict[str, Any]]:
+    """Approved applications available to this vendor — per-vendor nearest-first."""
+    return get_vendor_portal().opportunities(_vendor(user))
+
+
+@router.post("/vendor/opportunities/{application_id}/claim")
+def claim_opportunity(application_id: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """Claim an APPROVED application (nearest-vendor routing with escalation)."""
+    portal = get_vendor_portal()
+    vendor = _vendor(user)
+    try:
+        result = portal.claim_opportunity(vendor, application_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except VendorAccessError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    db.audit(
+        action="vendor.opportunity.claim",
+        entity_type="solar_applications",
+        entity_id=application_id,
+        actor_id=user.id,
+        actor_role=user.role.value,
+        after_state={"vendor_id": vendor["id"]},
+    )
+    return result
+
+
+@router.get("/vendor/applications")
+def vendor_applications(user: CurrentUser = Depends(get_current_user)) -> list[dict[str, Any]]:
+    """My Applications — every APPROVED/VENDOR_SELECTED/INSTALLING etc. assigned to this vendor."""
+    vendor = _vendor(user)
+    portal = get_vendor_portal()
+    # Projects already contain every engaged application
+    projs = portal.projects(vendor)
+    # Flatten with real application status and timeline hint
+    out = []
+    for p in projs:
+        app = p.get("application") or {}
+        out.append({
+            "application_id": p["application_id"],
+            "application_number": app.get("application_number"),
+            "applicant_name": app.get("applicant_name"),
+            "consumer_number": app.get("consumer_number"),
+            "contact_phone": app.get("contact_phone"),
+            "district": app.get("district"),
+            "state": app.get("state"),
+            "address_line": app.get("address_line"),
+            "pv_bus": app.get("pv_bus"),
+            "new_pv_kw": app.get("new_pv_kw"),
+            "total_pv_kw": app.get("total_pv_kw"),
+            "status": app.get("status"),
+            "created_at": app.get("created_at"),
+            "installation_status": p.get("installation", {}).get("status"),
+            "discom_verified": p.get("installation", {}).get("discom_verified"),
+            "latitude": app.get("latitude"),
+            "longitude": app.get("longitude"),
+            "sanctioned_load_kw": app.get("sanctioned_load_kw"),
+        })
+    return out
+
+
+@router.get("/vendor/applications/{application_id}")
+def vendor_application_detail(application_id: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """Full detail for one vendor-assigned application: app + timeline + docs + subsidy + installation."""
+    vendor = _vendor(user)
+    portal = get_vendor_portal()
+    # Verify ownership via installation or appointment
+    owns = False
+    try:
+        # Check installations
+        inst = db.as_service().table("installations").select("*").eq("application_id", application_id).eq("vendor_id", vendor["id"]).limit(1).execute().data
+        if inst: owns = True
+        # Check appointments
+        if not owns:
+            appt = db.as_service().table("appointments").select("id").eq("application_id", application_id).eq("vendor_id", vendor["id"]).limit(1).execute().data
+            if appt: owns = True
+    except Exception:
+        pass
+    if not owns:
+        raise HTTPException(status_code=403, detail="This application is not assigned to your account")
+    # Load application + latest assessment
+    app_rows = db.as_service().table("solar_applications").select("*").eq("id", application_id).execute().data or []
+    if not app_rows:
+        raise HTTPException(status_code=404, detail="Application not found")
+    application = app_rows[0]
+    # Timeline
+    history = db.as_service().table("application_status_history").select("*").eq("application_id", application_id).order("created_at").execute().data or []
+    # Documents (all parties)
+    docs = db.as_service().table("application_documents").select("*").eq("application_id", application_id).order("created_at", desc=True).execute().data or []
+    # Vendor docs
+    vdocs = db.as_service().table("vendor_documents").select("*").eq("vendor_id", vendor["id"]).execute().data or []
+    # Installation
+    installation = db.as_service().table("installations").select("*").eq("application_id", application_id).eq("vendor_id", vendor["id"]).limit(1).execute().data
+    installation = installation[0] if installation else None
+    # Scheme subsidy estimate based on proposed capacity
+    subsidy = None
+    try:
+        from app.services.scheme import get_scheme_service
+        sch = get_scheme_service()
+        cap = float(application.get("new_pv_kw") or 0)
+        est = sch.estimate_cfa(cap)
+        subsidy = est.as_dict() if est else None
+    except Exception:
+        subsidy = None
+    # DISCOM reviewer info
+    discom = None
+    if application.get("reviewed_by"):
+        prof = db.as_service().table("profiles").select("full_name,discom_name,email").eq("id", application["reviewed_by"]).limit(1).execute().data
+        discom = prof[0] if prof else None
+    return {
+        "application": application,
+        "installation": installation,
+        "history": history,
+        "documents": docs,
+        "vendor_documents": vdocs,
+        "subsidy": subsidy,
+        "discom": discom,
+        "allowed_actions": list(portal.VENDOR_ALLOWED_STATUSES) if hasattr(portal, "VENDOR_ALLOWED_STATUSES") else [],
+    }
+
+
 @router.get("/vendor/projects")
 def vendor_projects(user: CurrentUser = Depends(get_current_user)) -> list[dict[str, Any]]:
     return get_vendor_portal().projects(_vendor(user))

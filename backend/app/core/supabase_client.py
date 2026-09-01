@@ -56,10 +56,13 @@ MAX_RETRIES = 2
 # PostgREST may well have run the statement.
 _RETRYABLE = (
     httpx.RemoteProtocolError,
+    httpx.LocalProtocolError,
     httpx.ConnectError,
     httpx.ConnectTimeout,
     httpx.ReadError,
     httpx.WriteError,
+    KeyError,
+    RuntimeError,
 )
 
 # Failures raised before any byte reached the server, so replaying them cannot
@@ -113,9 +116,13 @@ def _resilient_session(session: httpx.Client) -> None:
     if getattr(session, "_solargrid_hardened", False):
         return
     previous = session._transport
+    # http2 disabled on the backend: Supabase edge + httpx http2 pool reuse
+    # produces LocalProtocolError/KeyError under concurrent load (see vendor
+    # portal stack traces). HTTP/1.1 correctly detects a closed socket before
+    # reuse, so keepalive handling is reliable.
     session._transport = _ReconnectingTransport(
         httpx.HTTPTransport(
-            http2=True,
+            http2=False,
             limits=httpx.Limits(
                 max_connections=100,
                 max_keepalive_connections=20,

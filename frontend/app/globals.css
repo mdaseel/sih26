@@ -3,466 +3,353 @@
 @tailwind utilities;
 
 /* ============================================================
-   Palette
-   ============================================================
-   Light is the default and dark is opt-in, which is the way round an
-   administrative tool wants to be: most of this application is forms, tables
-   and figures read in daylight, and the reference design it now follows is a
-   light one.
-
-   Everything is an RGB triple rather than a colour, so one token serves at any
-   opacity — rgb(var(--line) / 0.4) — without a second variable for the faded
-   version.
-
-   The block near the bottom remaps the slate utilities the pages name inline.
-   That part is a bridge and is marked as one. */
+   SolarGrid AI — Design System v2
+   Apple + Impeccable + Animate synthesis
+   ============================================================ */
 
 :root {
   color-scheme: light;
 
-  --surface: 248 250 252;      /* page canvas            */
-  --panel: 255 255 255;        /* cards, sidebar, header */
-  --panel-raised: 241 245 249; /* hover, nested          */
-  --line: 226 232 240;         /* borders, dividers      */
-  --ink: 18 32 58;             /* #12203a, the navy from the landing */
-  --ink-muted: 71 85 105;      /* body text              */
-  --ink-faint: 100 116 139;    /* captions, hints        */
+  /* Surfaces */
+  --surface: 248 250 252;
+  --surface-elevated: 255 255 255;
+  --panel: 255 255 255;
+  --panel-raised: 241 245 249;
+  --panel-hover: 237 242 248;
+  --line: 226 232 240;
+  --line-strong: 203 213 225;
 
-  /* The brand fill: lime. High luminance, so it works as a surface with navy
-     on top and never as text on white — 1.4:1 against the page would be
-     unreadable. Wherever a colour has to carry meaning as text, use --accent. */
-  --brand: 212 243 74;         /* #d4f34a */
-  --brand-ink: 18 32 58;       /* navy, the only ink legible on lime */
+  /* Ink */
+  --ink: 15 23 42;
+  --ink-muted: 71 85 105;
+  --ink-faint: 100 116 139;
+  --ink-ghost: 148 163 184;
 
-  /* The blue from the mark in the logo. Links, focus rings, the live rail on
-     the tracker — anything that must read as a colour at small sizes. */
-  --accent: 31 122 224;        /* #1f7ae0 */
+  /* Brand */
+  --brand: 212 243 74;
+  --brand-ink: 15 23 42;
+  --brand-ring: 187 219 52;
+  /* Accent — solar blue */
+  --accent: 14 165 233;
+  --accent-strong: 2 132 199;
   --accent-ink: 255 255 255;
+  --accent-glow: 14 165 233;
 
-  --shadow: 18 32 58;
-  --shadow-strength: 0.07;
+  /* Risk — unchanged semantically */
+  --safe: 34 197 94;
+  --caution: 245 158 11;
+  --constrained: 239 68 68;
+
+  /* Motion tokens — Animate skill */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-apple: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --duration-micro: 140ms;
+  --duration-fast: 200ms;
+  --duration-normal: 300ms;
+  --duration-slow: 500ms;
+
+  --shadow: 15 23 42;
+  --shadow-strength: 0.06;
+  --shadow-strong: 0.12;
 }
 
 html.dark {
   color-scheme: dark;
-
-  --surface: 8 14 30;
+  --surface: 6 10 22;
+  --surface-elevated: 15 23 42;
   --panel: 17 26 48;
-  --panel-raised: 30 43 71;
-  --line: 45 60 90;
+  --panel-raised: 24 36 66;
+  --panel-hover: 30 44 78;
+  --line: 30 41 64;
+  --line-strong: 45 60 90;
   --ink: 241 245 249;
-  --ink-muted: 160 174 195;
-  --ink-faint: 116 132 156;
-
-  /* Lime survives the inversion unchanged — it is the brand, and a brand that
-     changes hue with the theme is two brands. */
-  --brand: 212 243 74;
-  --brand-ink: 18 32 58;
-
-  --accent: 96 165 250;
-  --accent-ink: 8 14 30;
-
+  --ink-muted: 148 163 184;
+  --ink-faint: 100 116 156;
+  --ink-ghost: 71 85 105;
+  --accent: 56 189 248;
+  --accent-strong: 14 165 233;
+  --accent-glow: 56 189 248;
   --shadow: 0 0 0;
-  --shadow-strength: 0.45;
+  --shadow-strength: 0.4;
 }
 
 html {
-  /* Poppins everywhere. The landing page uses the same family at a heavier
-     weight rather than a second typeface, so the site reads as one thing. */
   font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 body {
   background: rgb(var(--surface));
   color: rgb(var(--ink-muted));
   @apply antialiased;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
+  transition: background-color 200ms var(--ease-out), color 200ms var(--ease-out);
 }
 
-h1,
-h2,
-h3,
-h4 {
+/* Selection */
+::selection {
+  background: rgb(var(--accent) / 0.25);
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--line-strong));
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Headings — Apple optical sizing */
+h1, h2, h3, h4 {
   color: rgb(var(--ink));
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+h1 { line-height: 1.05; font-weight: 800; }
+h2 { line-height: 1.15; }
+p { text-wrap: pretty; }
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
 }
 
 /* ============================================================
-   Components
-   ============================================================
-   Restrained on purpose. Flat surfaces, one-pixel borders, a shadow you have to
-   look for, 8px corners. The previous styling leaned on gradients, glow and
-   backdrop blur; at the density this application runs at — a dashboard of
-   twelve cards, a table of seventy buses — that decoration competes with the
-   data for attention, and the data should win. */
-
+   Components — craft floor
+   ============================================================ */
 @layer components {
+  /* Glass — Apple material */
+  .glass {
+    background: rgb(var(--panel) / 0.72);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgb(var(--line) / 0.5);
+  }
+  .glass-strong {
+    background: rgb(var(--panel) / 0.84);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    box-shadow: 0 8px 32px rgb(var(--shadow) / 0.12), 0 1px 2px rgb(var(--shadow) / 0.08);
+  }
+  html.dark .glass { background: rgb(var(--panel) / 0.62); }
+  html.dark .glass-strong { background: rgb(var(--panel) / 0.72); }
+
   .card {
-    /* The landing panel's curve, carried through the whole application. 16px
-       rather than the hero's 28px: the hero is one object filling the screen,
-       these sit twelve to a dashboard, and the same radius at that size reads
-       as bubbles rather than as structure. */
-    @apply rounded-2xl p-5;
+    @apply rounded-[20px] p-5;
     background: rgb(var(--panel));
     border: 1px solid rgb(var(--line));
-    box-shadow: 0 1px 2px rgb(var(--shadow) / var(--shadow-strength));
+    box-shadow: 0 1px 3px rgb(var(--shadow) / var(--shadow-strength)), 0 0 0 1px rgb(var(--line) / 0.4);
+    transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
   }
-
-  /* Kept as an alias: several pages still ask for it, and a second visual
-     treatment for the same thing is what this pass set out to remove. */
-  .card-glossy {
+  .card-interactive {
     @apply card;
   }
+  @media (hover: hover) and (pointer: fine) {
+    .card-interactive:hover {
+      transform: translateY(-2px) scale(1.005);
+      border-color: rgb(var(--line-strong));
+      box-shadow: 0 12px 24px rgb(var(--shadow) / 0.1), 0 4px 8px rgb(var(--shadow) / 0.06), 0 0 0 1px rgb(var(--line-strong) / 0.5);
+    }
+    .card-interactive:active {
+      transform: translateY(0) scale(0.99);
+      transition-duration: 100ms;
+    }
+  }
 
+  .card-glossy { @apply card; }
+
+  /* Inputs — Apple form */
   .label {
-    @apply mb-1.5 block text-xs font-medium;
-    color: rgb(var(--ink-muted));
+    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-widest;
+    color: rgb(var(--ink-faint));
   }
-
   .input {
-    @apply w-full rounded-xl px-3.5 py-2 text-sm transition-colors;
+    @apply w-full rounded-xl px-3.5 py-2.5 text-sm transition-all;
     background: rgb(var(--panel));
-    border: 1px solid rgb(var(--line));
+    border: 1.5px solid rgb(var(--line));
     color: rgb(var(--ink));
+    box-shadow: inset 0 1px 2px rgb(var(--shadow) / 0.04);
   }
-
+  .input:hover { border-color: rgb(var(--line-strong)); }
   .input:focus {
     @apply outline-none;
     border-color: rgb(var(--accent));
-    box-shadow: 0 0 0 3px rgb(var(--accent) / 0.15);
+    box-shadow: 0 0 0 4px rgb(var(--accent) / 0.12), inset 0 1px 2px rgb(var(--shadow) / 0.04);
   }
-
-  .input::placeholder {
-    color: rgb(var(--ink-faint));
-  }
+  .input::placeholder { color: rgb(var(--ink-ghost)); }
 
   .btn {
-    /* Pills, as on the landing page. */
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2
-           text-sm font-semibold transition-all
-           disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-2.5 text-sm font-semibold transition-all select-none;
+    transform-origin: center;
   }
-
+  .btn:active { transform: scale(0.97); }
   .btn-primary {
     @apply btn;
     background: rgb(var(--brand));
     color: rgb(var(--brand-ink));
+    box-shadow: 0 1px 2px rgb(var(--shadow) / 0.1), 0 4px 12px rgb(var(--brand) / 0.25);
   }
-
-  .btn-primary:hover:not(:disabled) {
-    /* Lime is already at the top of its lightness range, so it cannot brighten
-       on hover the way a mid-tone can. Scale gives the feedback instead. */
-    transform: scale(1.02);
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover:not(:disabled) {
+      transform: scale(1.02) translateY(-1px);
+      box-shadow: 0 4px 16px rgb(var(--brand) / 0.35), 0 1px 3px rgb(var(--shadow) / 0.1);
+    }
   }
-
   .btn-ghost {
     @apply btn;
     background: rgb(var(--panel));
-    border: 1px solid rgb(var(--line));
+    border: 1.5px solid rgb(var(--line));
     color: rgb(var(--ink));
+    box-shadow: 0 1px 2px rgb(var(--shadow) / 0.04);
   }
-
-  .btn-ghost:hover:not(:disabled) {
-    background: rgb(var(--panel-raised));
-    color: rgb(var(--ink));
+  @media (hover: hover) and (pointer: fine) {
+    .btn-ghost:hover:not(:disabled) {
+      background: rgb(var(--panel-raised));
+      border-color: rgb(var(--line-strong));
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgb(var(--shadow) / 0.08);
+    }
   }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
-  /* Numeric readouts are tabular so columns of figures line up. */
+  /* Metrics */
   .metric-value {
-    @apply font-mono text-lg font-semibold tabular-nums;
+    @apply font-mono text-[1.7rem] font-bold tracking-tight tabular-nums;
     color: rgb(var(--ink));
+    letter-spacing: -0.02em;
   }
-
   .metric-label {
-    @apply text-xs font-medium;
+    @apply text-[11px] font-semibold uppercase tracking-widest;
     color: rgb(var(--ink-faint));
   }
 
-  /* A list that would otherwise grow without limit. The cap is on the list,
-     never on the card, so headers and totals stay put while the rows move. */
   .scroll-pane {
     @apply overflow-y-auto pr-1;
     scrollbar-width: thin;
-    scrollbar-color: rgb(var(--line)) transparent;
   }
 
-  .scroll-pane::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  .scroll-pane::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .scroll-pane::-webkit-scrollbar-thumb {
-    @apply rounded-full;
-    background: rgb(var(--line));
+  /* Shimmer — loading */
+  .shimmer {
+    background: linear-gradient(90deg, rgb(var(--panel-raised)) 25%, rgb(var(--panel-hover)) 50%, rgb(var(--panel-raised)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.6s var(--ease-in-out) infinite;
   }
 }
 
 /* ============================================================
-   Application tracker
-   ============================================================
-   Motion here carries one meaning only: this stage is happening now. A
-   completed stage is still, a future stage is still. Nothing animates to
-   suggest progress that has not been recorded. */
+   Animations — Animate skill system
+   ============================================================ */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes track-flow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes track-halo { 0% { transform: scale(1); opacity: 0.55; } 70%, 100% { transform: scale(2.4); opacity: 0; } }
+@keyframes track-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes border-beam { 0% { --beam: 0%; } 100% { --beam: 100%; } }
 
-@keyframes track-flow {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
+.animate-fade { animation: fadeIn 0.5s var(--ease-out) both; }
+.animate-slide-up { animation: slideUp 0.6s var(--ease-out) both; }
+.animate-scale-in { animation: scaleIn 0.4s var(--ease-spring) both; }
+.animate-float { animation: float 4s var(--ease-in-out) infinite; }
 
-@keyframes track-halo {
-  0% {
-    transform: scale(1);
-    opacity: 0.55;
-  }
-  70%,
-  100% {
-    transform: scale(2.4);
-    opacity: 0;
-  }
-}
+.stagger > * { opacity: 0; animation: slideUp 0.6s var(--ease-out) both; }
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 70ms; }
+.stagger > *:nth-child(3) { animation-delay: 140ms; }
+.stagger > *:nth-child(4) { animation-delay: 210ms; }
+.stagger > *:nth-child(5) { animation-delay: 280ms; }
+.stagger > *:nth-child(6) { animation-delay: 350ms; }
+.stagger > *:nth-child(7) { animation-delay: 420ms; }
+.stagger > *:nth-child(8) { animation-delay: 490ms; }
 
-@keyframes track-enter {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
+.page-enter { animation: slideUp 0.6s var(--ease-out) both; }
+.card-enter { animation: scaleIn 0.45s var(--ease-spring) both; }
 
-/* The rail segment the application is currently travelling along. */
+/* Track — kept from original but refined */
 .track-live {
-  background-image: linear-gradient(
-    90deg,
-    rgb(var(--accent) / 0.25) 0%,
-    rgb(var(--accent)) 50%,
-    rgb(var(--accent) / 0.25) 100%
-  );
+  background-image: linear-gradient(90deg, rgb(var(--accent) / 0.2) 0%, rgb(var(--accent)) 50%, rgb(var(--accent) / 0.2) 100%);
   background-size: 200% 100%;
   animation: track-flow 1.8s linear infinite;
 }
-
 .track-live-v {
-  background-image: linear-gradient(
-    180deg,
-    rgb(var(--accent) / 0.25) 0%,
-    rgb(var(--accent)) 50%,
-    rgb(var(--accent) / 0.25) 100%
-  );
+  background-image: linear-gradient(180deg, rgb(var(--accent) / 0.2) 0%, rgb(var(--accent)) 50%, rgb(var(--accent) / 0.2) 100%);
   background-size: 100% 200%;
   animation: track-flow 1.8s linear infinite;
 }
+.track-halo { animation: track-halo 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+.track-enter { animation: track-enter 0.4s var(--ease-out) both; }
 
-.track-halo {
-  animation: track-halo 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-}
-
-.track-enter {
-  animation: track-enter 0.35s ease-out both;
-}
-
-/* Someone who has asked for less motion gets none of it. The tracker still
-   reads correctly: the current stage keeps its colour and its label. */
+/* Reduced motion — Animate skill */
 @media (prefers-reduced-motion: reduce) {
-  .track-live,
-  .track-live-v,
-  .track-halo,
-  .track-enter {
-    animation: none;
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
+  .track-live, .track-live-v, .track-halo { animation: none; background-image: none; background-color: rgb(var(--accent)); }
+  html { scroll-behavior: auto; }
+}
 
-  .track-live,
-  .track-live-v {
-    background-image: none;
-    background-color: rgb(var(--accent));
-  }
+/* Reduced transparency — Apple guideline */
+@media (prefers-reduced-transparency: reduce) {
+  .glass, .glass-strong { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgb(var(--panel)); }
 }
 
 /* ============================================================
-   Remapping the inline slate utilities
-   ============================================================
-   A bridge, and deliberately a visible one.
-
-   The pages were written with a dark palette named directly — text-slate-300,
-   bg-slate-900, border-slate-800 and so on, several hundred times across thirty
-   files. Now that light is the default, those literals are wrong in the default
-   theme, so they resolve to tokens here and the tokens flip under html.dark.
-
-   The durable fix is for components to use .card / .input / .metric-* or the
-   --ink / --panel variables instead of naming a shade. Keeping it in one place
-   means it can be unwound one line at a time as components are revised. */
-
-/* --- surfaces --- */
-.bg-slate-950,
-.bg-slate-950\/40,
-.bg-slate-950\/50,
-.bg-slate-950\/60,
-.bg-slate-950\/70,
-.bg-slate-950\/85,
-.bg-slate-950\/90 {
-  background-color: rgb(var(--surface)) !important;
+   Bridges — slate remapping (kept, slightly tuned)
+   ============================================================ */
+.bg-slate-950, .bg-slate-950\/40, .bg-slate-950\/50, .bg-slate-950\/60, .bg-slate-950\/70, .bg-slate-950\/85, .bg-slate-950\/90 {
+  background-color: rgb(var(--surface-elevated)) !important;
 }
-
-.bg-slate-900,
-.bg-slate-900\/40,
-.bg-slate-900\/50,
-.bg-slate-900\/60,
-.bg-slate-900\/70,
-.bg-slate-900\/80 {
+.bg-slate-900, .bg-slate-900\/40, .bg-slate-900\/50, .bg-slate-900\/60, .bg-slate-900\/70, .bg-slate-900\/80 {
   background-color: rgb(var(--panel)) !important;
 }
-
-.bg-slate-800,
-.bg-slate-800\/50,
-.bg-slate-800\/80 {
-  background-color: rgb(var(--panel-raised)) !important;
-}
-
-/* --- text --- */
-.text-slate-100,
-.text-slate-200 {
-  color: rgb(var(--ink)) !important;
-}
-
-.text-slate-300,
-.text-slate-400 {
-  color: rgb(var(--ink-muted)) !important;
-}
-
-.text-slate-500,
-.text-slate-600 {
-  color: rgb(var(--ink-faint)) !important;
-}
-
-/* --- borders --- */
-.border-slate-700,
-.border-slate-800,
-.border-slate-900,
-.border-slate-800\/60,
-.border-slate-700\/40,
-.border-slate-700\/60,
-.border-slate-700\/80 {
+.bg-slate-800, .bg-slate-800\/50, .bg-slate-800\/80 { background-color: rgb(var(--panel-raised)) !important; }
+.text-slate-100, .text-slate-200 { color: rgb(var(--ink)) !important; }
+.text-slate-300, .text-slate-400 { color: rgb(var(--ink-muted)) !important; }
+.text-slate-500, .text-slate-600 { color: rgb(var(--ink-faint)) !important; }
+.border-slate-700, .border-slate-800, .border-slate-900,
+.border-slate-800\/60, .border-slate-700\/40, .border-slate-700\/60, .border-slate-700\/80 {
   border-color: rgb(var(--line)) !important;
 }
+.hover\:bg-slate-800:hover, .hover\:bg-slate-900:hover, .hover\:bg-slate-900\/50:hover { background-color: rgb(var(--panel-raised)) !important; }
+.hover\:text-slate-200:hover, .hover\:text-slate-300:hover, .hover\:text-white:hover { color: rgb(var(--ink)) !important; }
 
-/* --- hover states --- */
-.hover\:bg-slate-800:hover,
-.hover\:bg-slate-900:hover,
-.hover\:bg-slate-900\/50:hover {
-  background-color: rgb(var(--panel-raised)) !important;
-}
+/* Risk tints — preserved identically in both themes */
+.bg-green-950\/40, .bg-green-950\/60 { background-color: rgb(220 252 231) !important; }
+.bg-amber-950\/30, .bg-amber-950\/40, .bg-amber-950\/60 { background-color: rgb(254 243 199) !important; }
+.bg-red-950\/40, .bg-red-950\/60 { background-color: rgb(254 226 226) !important; }
+.bg-sky-950\/40, .bg-sky-950\/50, .bg-sky-950\/60 { background-color: rgb(var(--accent) / 0.08) !important; }
+.text-green-100, .text-green-200, .text-green-300 { color: rgb(21 128 61) !important; }
+.text-amber-100, .text-amber-200, .text-amber-300, .text-yellow-100, .text-yellow-300 { color: rgb(180 83 9) !important; }
+.text-red-100, .text-red-200, .text-red-300 { color: rgb(185 28 28) !important; }
+.text-sky-100, .text-sky-200, .text-sky-300, .text-sky-400 { color: rgb(var(--accent-strong)) !important; }
 
-.hover\:text-slate-200:hover,
-.hover\:text-slate-300:hover,
-.hover\:text-white:hover {
-  color: rgb(var(--ink)) !important;
-}
-
-/*
-   Risk and status colours are NOT remapped to tokens.
-
-   The -100 tints are included alongside -200 and -300. They were missed the
-   first time, and since light mode lightens the tinted backgrounds, a
-   text-amber-100 heading on a bg-amber-950/40 panel ended up as pale cream on
-   pale cream — the "not a government service" banner on the scheme page was
-   invisible.
-
-   Green, amber and red carry meaning here — a CONSTRAINED verdict is red
-   because it is constrained — and that must read identically in both themes.
-   Only the tinted backgrounds move, so the hue survives on either ground.
-*/
-.bg-green-950\/40,
-.bg-green-950\/60 {
-  background-color: rgb(220 252 231) !important;
-}
-.bg-amber-950\/30,
-.bg-amber-950\/40,
-.bg-amber-950\/60 {
-  background-color: rgb(254 243 199) !important;
-}
-.bg-red-950\/40,
-.bg-red-950\/60 {
-  background-color: rgb(254 226 226) !important;
-}
-.bg-sky-950\/40,
-.bg-sky-950\/50,
-.bg-sky-950\/60 {
-  background-color: rgb(var(--accent) / 0.1) !important;
-}
-
-.text-green-100,
-.text-green-200,
-.text-green-300 {
-  color: rgb(21 128 61) !important;
-}
-.text-amber-100,
-.text-amber-200,
-.text-amber-300,
-.text-yellow-100,
-.text-yellow-300 {
-  color: rgb(180 83 9) !important;
-}
-.text-red-100,
-.text-red-200,
-.text-red-300 {
-  color: rgb(185 28 28) !important;
-}
-.text-sky-100,
-.text-sky-200,
-.text-sky-300,
-.text-sky-400 {
-  color: rgb(var(--accent)) !important;
-}
-
-html.dark .bg-green-950\/40,
-html.dark .bg-green-950\/60 {
-  background-color: rgb(5 46 22 / 0.4) !important;
-}
-html.dark .bg-amber-950\/30,
-html.dark .bg-amber-950\/40,
-html.dark .bg-amber-950\/60 {
-  background-color: rgb(69 26 3 / 0.4) !important;
-}
-html.dark .bg-red-950\/40,
-html.dark .bg-red-950\/60 {
-  background-color: rgb(69 10 10 / 0.4) !important;
-}
-html.dark .bg-sky-950\/40,
-html.dark .bg-sky-950\/50,
-html.dark .bg-sky-950\/60 {
-  background-color: rgb(8 47 73 / 0.5) !important;
-}
-
-html.dark .text-green-100,
-html.dark .text-green-200,
-html.dark .text-green-300 {
-  color: rgb(134 239 172) !important;
-}
-html.dark .text-amber-100,
-html.dark .text-amber-200,
-html.dark .text-amber-300,
-html.dark .text-yellow-100,
-html.dark .text-yellow-300 {
-  color: rgb(253 224 71) !important;
-}
-html.dark .text-red-100,
-html.dark .text-red-200,
-html.dark .text-red-300 {
-  color: rgb(252 165 165) !important;
-}
-html.dark .text-sky-100,
-html.dark .text-sky-200,
-html.dark .text-sky-300,
-html.dark .text-sky-400 {
-  color: rgb(var(--accent)) !important;
-}
+html.dark .bg-green-950\/40, html.dark .bg-green-950\/60 { background-color: rgb(5 46 22 / 0.4) !important; }
+html.dark .bg-amber-950\/30, html.dark .bg-amber-950\/40, html.dark .bg-amber-950\/60 { background-color: rgb(69 26 3 / 0.4) !important; }
+html.dark .bg-red-950\/40, html.dark .bg-red-950\/60 { background-color: rgb(69 10 10 / 0.4) !important; }
+html.dark .bg-sky-950\/40, html.dark .bg-sky-950\/50, html.dark .bg-sky-950\/60 { background-color: rgb(8 47 73 / 0.5) !important; }
+html.dark .text-green-100, html.dark .text-green-200, html.dark .text-green-300 { color: rgb(134 239 172) !important; }
+html.dark .text-amber-100, html.dark .text-amber-200, html.dark .text-amber-300, html.dark .text-yellow-100, html.dark .text-yellow-300 { color: rgb(253 224 71) !important; }
+html.dark .text-red-100, html.dark .text-red-200, html.dark .text-red-300 { color: rgb(252 165 165) !important; }
+html.dark .text-sky-100, html.dark .text-sky-200, html.dark .text-sky-300, html.dark .text-sky-400 { color: rgb(var(--accent)) !important; }

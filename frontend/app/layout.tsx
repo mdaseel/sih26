@@ -53,14 +53,18 @@ export default function RootLayout({
       <body>
         {children}
         <footer
-          className="border-t px-6 py-4 text-center text-xs"
+          className="mt-8 border-t px-6 py-6 text-center text-xs"
           style={{
             borderColor: "rgb(var(--line))",
+            background: "rgb(var(--panel) / 0.6)",
+            backdropFilter: "blur(12px)",
             color: "rgb(var(--ink-faint))",
           }}
         >
-          SolarGrid AI · Prototype · Synthetic grid data (IEEE Comprehensive Test
-          Feeder) · Not an official DISCOM or PM Surya Ghar portal
+          <span className="inline-flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-black" style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))" }}>◈</span>
+            SolarGrid AI · Prototype · Synthetic grid data (IEEE Test Feeder) · Not an official DISCOM or PM Surya Ghar portal
+          </span>
         </footer>
       </body>
     </html>

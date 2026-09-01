@@ -98,14 +98,23 @@ class VendorPortalService:
         if not app_ids:
             return rows
 
-        apps = (
-            db.as_service()
-            .table("solar_applications")
-            .select(CUSTOMER_FIELDS_FOR_VENDOR)
-            .in_("id", app_ids)
-            .execute()
-        ).data or []
-        by_id = {a["id"]: a for a in apps}
+        # Chunk IN clause to avoid PostgREST URL limits and http pool pressure
+        by_id: dict[str, dict[str, Any]] = {}
+        for i in range(0, len(app_ids), 50):
+            chunk = app_ids[i : i + 50]
+            try:
+                part = (
+                    db.as_service()
+                    .table("solar_applications")
+                    .select(CUSTOMER_FIELDS_FOR_VENDOR)
+                    .in_("id", chunk)
+                    .execute()
+                ).data or []
+                for a in part:
+                    by_id[a["id"]] = a
+            except Exception:
+                # One failed chunk must not hide the rest
+                continue
         return [{**r, "application": by_id.get(r["application_id"])} for r in rows]
 
     def respond_to_lead(
@@ -129,10 +138,21 @@ class VendorPortalService:
             .execute()
         ).data
 
-        # Accepting a lead opens the installation record the work is tracked on.
+        # Accepting a lead opens the installation record the work is tracked on
+        # and advances the application from APPROVED -> VENDOR_SELECTED so the
+        # citizen tracker and DISCOM queue reflect reality in real time.
         installation = None
         if accept:
             installation = self._ensure_installation(vendor, appointment["application_id"])
+            try:
+                db.as_service().table("solar_applications").update(
+                    {"status": "VENDOR_SELECTED"}
+                ).eq("id", appointment["application_id"]).eq("status", "APPROVED").execute()
+            except Exception:
+                pass
+        else:
+            # Rejected lead leaves application APPROVED for other vendors
+            pass
 
         return {
             "appointment": updated[0] if updated else None,
@@ -235,7 +255,7 @@ class VendorPortalService:
                 "The furthest a vendor may take it is VERIFICATION_PENDING."
             )
 
-        self._own(vendor, "installations", installation_id)
+        own = self._own(vendor, "installations", installation_id)
 
         update: dict[str, Any] = {"status": status.value}
         if installed_capacity_kw is not None:
@@ -252,7 +272,24 @@ class VendorPortalService:
             .eq("id", installation_id)
             .execute()
         )
-        return res.data[0] if res.data else {}
+        data = res.data[0] if res.data else {}
+        # Mirror installation progress to application tracking in real time
+        try:
+            app_status_map = {
+                InstallationStatus.SITE_VISIT.value: "VENDOR_SELECTED",
+                InstallationStatus.SCHEDULED.value: "VENDOR_SELECTED",
+                InstallationStatus.IN_PROGRESS.value: "INSTALLING",
+                InstallationStatus.COMPLETED.value: "INSTALLED",
+                InstallationStatus.VERIFICATION_PENDING.value: "INSTALLED",
+            }
+            mapped = app_status_map.get(status.value)
+            if mapped:
+                db.as_service().table("solar_applications").update(
+                    {"status": mapped}
+                ).eq("id", own["application_id"]).execute()
+        except Exception:
+            pass
+        return data
 
     # ---------------- DISCOM verification ----------------
 
@@ -277,7 +314,16 @@ class VendorPortalService:
             .eq("id", installation_id)
             .execute()
         )
-        return res.data[0] if res.data else {}
+        data = res.data[0] if res.data else {}
+        # Advance application to VERIFIED so citizen tracker closes the loop
+        try:
+            if data.get("application_id"):
+                db.as_service().table("solar_applications").update(
+                    {"status": "VERIFIED"}
+                ).eq("id", data["application_id"]).execute()
+        except Exception:
+            pass
+        return data
 
     # ---------------- projects and documents ----------------
 
@@ -347,9 +393,138 @@ class VendorPortalService:
 
     # ---------------- dashboard ----------------
 
+    def opportunities(self, vendor: dict[str, Any]) -> list[dict[str, Any]]:
+        """Per-vendor marketplace: APPROVED apps with nearest routing.
+
+        Ordered nearest-first for this vendor, with is_primary flag for the
+        globally nearest vendor to each application (who sees the blinking
+        highlight). Escalation is time-based: if the primary does not claim
+        within 1 hour, next-nearest is eligible.
+        """
+        from app.services.routing import get_routing_service
+
+        try:
+            apps = (
+                db.as_service()
+                .table("solar_applications")
+                .select(CUSTOMER_FIELDS_FOR_VENDOR)
+                .eq("status", "APPROVED")
+                .order("created_at", desc=True)
+                .limit(80)
+                .execute()
+            ).data or []
+            installed_app_ids: set[str] = set()
+            try:
+                installs = (
+                    db.as_service().table("installations").select("application_id").execute()
+                ).data or []
+                installed_app_ids = {r["application_id"] for r in installs}
+            except Exception:
+                pass
+            # Filter unclaimed
+            apps = [a for a in apps if a["id"] not in installed_app_ids]
+            # For each app, compute nearest vendor globally to decide primary
+            try:
+                all_vendors = (
+                    db.as_service()
+                    .table("vendors")
+                    .select("id,latitude,longitude")
+                    .eq("status", "APPROVED")
+                    .eq("is_active", True)
+                    .execute()
+                ).data or []
+            except Exception:
+                all_vendors = [vendor]
+            routing = get_routing_service()
+            enriched: list[dict[str, Any]] = []
+            for a in apps:
+                lat, lon = a.get("latitude"), a.get("longitude")
+                # Distance for this vendor
+                my_dist = None
+                if lat is not None and lon is not None and vendor.get("latitude") is not None:
+                    d = routing.distance(lat, lon, vendor["latitude"], vendor["longitude"])
+                    if d:
+                        my_dist = d.distance_km
+                # Find globally nearest distance
+                min_dist = my_dist
+                nearest_id = vendor["id"]
+                for v in all_vendors:
+                    if v["id"] == vendor["id"]:
+                        continue
+                    if lat is None or v.get("latitude") is None:
+                        continue
+                    dd = routing.distance(lat, lon, v["latitude"], v["longitude"])
+                    if dd and (min_dist is None or dd.distance_km < min_dist):
+                        min_dist = dd.distance_km
+                        nearest_id = v["id"]
+                is_primary = nearest_id == vendor["id"]
+                # Escalation: if app older than 1h and primary hasn't claimed, allow others
+                from datetime import datetime, timezone
+                try:
+                    created = datetime.fromisoformat(a["created_at"].replace("Z", "+00:00"))
+                    age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
+                    can_claim = is_primary or age_h > 1.0
+                except Exception:
+                    can_claim = True
+                enriched.append(
+                    {
+                        **a,
+                        "distance_km": my_dist,
+                        "is_primary": is_primary,
+                        "should_blink": is_primary,
+                        "can_claim": can_claim,
+                    }
+                )
+            # Nearest-first for this vendor
+            enriched.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"] or 9999))
+            return enriched
+        except Exception:
+            return []
+
+    def claim_opportunity(self, vendor: dict[str, Any], application_id: str) -> dict[str, Any]:
+        """Vendor claims an APPROVED opportunity — creates CONFIRMED appointment + installation."""
+        app_rows = (
+            db.as_service().table("solar_applications").select("*").eq("id", application_id).execute()
+        ).data
+        if not app_rows:
+            raise ValueError("Application not found")
+        app = app_rows[0]
+        if app["status"] != "APPROVED":
+            raise ValueError(f"Application is {app['status']}, not APPROVED")
+        # Already claimed?
+        exists = (
+            db.as_service().table("installations").select("id").eq("application_id", application_id).limit(1).execute()
+        ).data
+        if exists:
+            raise ValueError("Application already claimed by another vendor")
+        # Create confirmed appointment on behalf of citizen
+        appt = (
+            db.as_service()
+            .table("appointments")
+            .insert(
+                {
+                    "application_id": application_id,
+                    "vendor_id": vendor["id"],
+                    "citizen_id": app["applicant_id"],
+                    "scheduled_at": "now()",
+                    "purpose": "INSTALLATION",
+                    "notes": "Auto-assigned via nearest-vendor routing",
+                    "status": "CONFIRMED",
+                }
+            )
+            .execute()
+        ).data
+        install = self._ensure_installation(vendor, application_id)
+        try:
+            db.as_service().table("solar_applications").update({"status": "VENDOR_SELECTED"}).eq("id", application_id).eq("status", "APPROVED").execute()
+        except Exception:
+            pass
+        return {"appointment": appt[0] if appt else None, "installation": install, "application_id": application_id}
+
     def summary(self, vendor: dict[str, Any]) -> dict[str, Any]:
         leads = self.leads(vendor)
         installs = self.installations(vendor)
+        opps = self.opportunities(vendor)
 
         new_leads = [
             a
@@ -379,6 +554,7 @@ class VendorPortalService:
                 InstallationStatus.VERIFICATION_PENDING.value, 0
             ),
             "verified": by_status.get(InstallationStatus.VERIFIED.value, 0),
+            "opportunities": len(opps),
             "verification_note": (
                 "Only a DISCOM reviewer can move an installation to VERIFIED. "
                 "Submit completed work as VERIFICATION_PENDING."

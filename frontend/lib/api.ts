@@ -62,11 +62,30 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+const _cache = new Map<string, { data: unknown; expiry: number }>();
+const _inflight = new Map<string, Promise<unknown>>();
+const CACHE_TTL_MS = 15_000;
+function cacheKey(path: string, init: RequestInit): string | null {
+  if ((init.method ?? "GET") !== "GET") return null;
+  if (path.includes("/timeline") || path.includes("/summary")) return null;
+  return `${path}`;
+}
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const key = cacheKey(path, init);
+  if (key) {
+    const hit = _cache.get(key);
+    if (hit && Date.now() < hit.expiry) return hit.data as T;
+    const inflight = _inflight.get(key);
+    if (inflight) return (await inflight) as T;
+  }
+  const doFetch = async (): Promise<T> => {
   let res: Response;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
     res = await fetch(`${BASE}${path}`, {
       ...init,
+      signal: init.signal ?? controller.signal,
       headers: {
         "Content-Type": "application/json",
         ...(await authHeader()),
@@ -74,7 +93,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       },
       cache: "no-store",
     });
-  } catch {
+    clearTimeout(timeout);
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw new ApiError(0, "Backend timed out");
     throw new ApiError(
       0,
       `Cannot reach the backend at ${BASE}. Start it with: uvicorn app.main:app --port 8000`
@@ -101,8 +122,31 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, detail);
   }
 
-  return (await res.json()) as T;
+  const data = (await res.json()) as T;
+  if (key) {
+    _cache.set(key, { data, expiry: Date.now() + CACHE_TTL_MS });
+    _inflight.delete(key);
+  } else {
+    // Invalidate GET caches that could be stale after a mutation
+    if ((init.method ?? "GET") !== "GET") {
+      for (const k of Array.from(_cache.keys())) {
+        if (k.startsWith("/api/applications") || k.startsWith("/api/discom") || k.startsWith("/api/vendor") || k.startsWith("/api/citizen")) {
+          _cache.delete(k);
+        }
+      }
+      _inflight.clear();
+    }
+  }
+  return data;
+  };
+  if (key) {
+    const p = doFetch();
+    _inflight.set(key, p as Promise<unknown>);
+    try { return await p; } finally { _inflight.delete(key); }
+  }
+  return doFetch();
 }
+export function clearApiCache() { _cache.clear(); _inflight.clear(); }
 
 export const api = {
   health: () =>
@@ -267,6 +311,7 @@ export const discomApi = {
 /** Vendor portal. Every route resolves the caller's vendor profile server-side. */
 export const vendorApi = {
   summary: () => request<VendorSummary>("/api/vendor/summary"),
+  opportunities: () => request<SolarApplication[]>("/api/vendor/opportunities"),
   leads: () => request<Lead[]>("/api/vendor/leads"),
   respondToLead: (appointmentId: string, accept: boolean, note?: string) =>
     request<{ accepted: boolean; installation: Installation | null }>(
@@ -280,6 +325,10 @@ export const vendorApi = {
       body: JSON.stringify(body),
     }),
   installations: () => request<Installation[]>("/api/vendor/installations"),
+  claimOpportunity: (applicationId: string) =>
+    request<{ appointment: Lead; installation: Installation }>(`/api/vendor/opportunities/${applicationId}/claim`, { method: "POST" }),
+  vendorApplications: () => request<Record<string, unknown>[]>("/api/vendor/applications"),
+  vendorApplicationDetail: (id: string) => request<Record<string, unknown>>(`/api/vendor/applications/${id}`),
   /** VERIFIED is refused server-side — only a DISCOM reviewer can set it. */
   updateInstallation: (id: string, status: InstallationStatusValue, kw?: number) =>
     request<Installation>(`/api/vendor/installations/${id}/status`, {

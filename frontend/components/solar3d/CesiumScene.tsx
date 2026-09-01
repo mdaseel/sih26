@@ -349,7 +349,7 @@ export function CesiumScene({
 
         // Globe lighting driven by actual sun position
         v.scene.globe.enableLighting = true;
-        v.scene.skyAtmosphere.show = true;
+        if (v.scene.skyAtmosphere) v.scene.skyAtmosphere.show = true;
         v.scene.fog.enabled = true;
         v.scene.globe.depthTestAgainstTerrain = true;
         v.shadowMap.softShadows = true;

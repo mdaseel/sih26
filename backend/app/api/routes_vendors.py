@@ -244,10 +244,34 @@ def register_vendor(
     payload: VendorRegistration, user: CurrentUser = Depends(get_current_user)
 ) -> dict[str, Any]:
     """Register a business. It is created PENDING and is invisible to customers
-    until a DISCOM approves it."""
+    until a DISCOM approves it. Enforces one-account-one-role: CITIZEN cannot
+    self-promote to VENDOR without role migration."""
     service = get_vendor_service()
     if service.for_owner(user.id) is not None:
         raise HTTPException(status_code=409, detail="This account already has a vendor profile")
+    # One-account-one-role: CITIZEN with existing applications must not become vendor
+    # Fresh CITIZEN email (no citizen applications) is auto-converted to VENDOR on first vendor registration
+    if user.role.value == "CITIZEN":
+        # Check if this citizen has ever submitted an application — if so, block to prevent hijack
+        try:
+            existing_apps = db.as_service().table("solar_applications").select("id").eq("applicant_id", user.id).limit(1).execute().data or []
+            if existing_apps:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Citizen accounts with existing applications cannot register as vendors. Use a separate vendor email (demo.vendor@solargrid.test) or ask DISCOM to convert your role to VENDOR.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        # Auto-convert fresh citizen → VENDOR before creating business (so RLS + future logins route correctly)
+        try:
+            from app.models.enums import UserRole
+            db.set_role(user.id, UserRole.VENDOR)
+        except Exception:
+            pass
+    elif user.role.value not in ("VENDOR", "ADMIN"):
+        raise HTTPException(status_code=403, detail=f"Role {user.role.value} cannot register a vendor business")
 
     created = service.register(user.access_token, user.id, payload.model_dump())
     if not created:

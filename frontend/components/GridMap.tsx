@@ -51,8 +51,6 @@ export function GridMap({ data }: { data: MapData }) {
   const popup = useRef<Popup | null>(null);
   const [layer, setLayer] = useState<MapLayerId>("risk");
   const [basemap, setBasemap] = useState(true);
-  const [imagery, setImagery] = useState<"map" | "satellite" | "3d">("map");
-  const [show3D, setShow3D] = useState(false);
   const [ready, setReady] = useState(false);
   // Bumped when the *current* map finishes its style, to re-run the draw effect.
   const [styleTick, setStyleTick] = useState(0);
@@ -182,35 +180,13 @@ export function GridMap({ data }: { data: MapData }) {
     };
   }, [buses]);
 
-  // ---- basemap visibility & imagery mode ----
+  // ---- basemap visibility ----
   useEffect(() => {
     const m = map.current;
     if (!m || !m.isStyleLoaded() || !m.getLayer("osm-raster")) return;
-    const isSat = imagery === "satellite" || imagery === "3d";
-    // swap tile URL
-    const src: any = m.getSource("osm") as any;
-    if (src && isSat) {
-      // switch to Esri satellite tiles for satellite/3d
-      m.setLayoutProperty("osm-raster", "visibility", "visible");
-      // update tiles via style source setTiles not trivial; re-add workaround:
-      try {
-        (m.getSource("osm") as any).tiles = ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"];
-      } catch {}
-      m.setPaintProperty("osm-raster", "raster-opacity", 1);
-      m.setPaintProperty("osm-raster", "raster-saturation", 0);
-    } else {
-      m.setLayoutProperty("osm-raster", "visibility", basemap ? "visible" : "none");
-      m.setPaintProperty("osm-raster", "raster-opacity", 0.55);
-      m.setPaintProperty("osm-raster", "raster-saturation", -0.4);
-    }
-    m.setPaintProperty("bg", "background-color", isSat ? "#0b1220" : basemap ? "#1e293b" : "#0b1120");
-    // pitch for 3d
-    if (imagery === "3d" || show3D) {
-      m.easeTo({ pitch: 58, bearing: -16, duration: 800 });
-    } else {
-      m.easeTo({ pitch: 0, bearing: 0, duration: 600 });
-    }
-  }, [basemap, imagery, show3D, ready, styleTick]);
+    m.setLayoutProperty("osm-raster", "visibility", basemap ? "visible" : "none");
+    m.setPaintProperty("bg", "background-color", basemap ? "#1e293b" : "#0b1120");
+  }, [basemap, ready, styleTick]);
 
   // ---- (re)draw sources and layers ----
   useEffect(() => {
@@ -299,34 +275,9 @@ export function GridMap({ data }: { data: MapData }) {
       else m.addSource(id, { type: "geojson", data: data_ as never });
     };
 
-    // 3D building footprints — synthetic blocks around each bus for 3D reference (Image 2)
-    const buildingFeatures = buses.flatMap((b) => {
-      const lon = b.longitude as number;
-      const lat = b.latitude as number;
-      const d = 0.00032;
-      const h = 10 + (parseInt(b.asset_code.replace(/\D/g, "") || "0", 10) % 11) + Math.round(Math.random() * 4);
-      // one main block per bus + one neighbour for density
-      const mkPoly = (ox: number, oy: number, height: number) => ({
-        type: "Feature" as const,
-        properties: { height, base_height: 0 },
-        geometry: {
-          type: "Polygon" as const,
-          coordinates: [[
-            [lon + ox - d, lat + oy - d],
-            [lon + ox + d, lat + oy - d],
-            [lon + ox + d, lat + oy + d],
-            [lon + ox - d, lat + oy + d],
-            [lon + ox - d, lat + oy - d],
-          ]],
-        },
-      });
-      return [mkPoly(0, 0, h), mkPoly(0.00055, 0.00035, Math.max(6, h - 3))];
-    });
-
     set("lines", { type: "FeatureCollection", features: lineFeatures });
     set("buses", { type: "FeatureCollection", features: busFeatures });
     set("apps", { type: "FeatureCollection", features: appFeatures });
-    set("buildings3d", { type: "FeatureCollection", features: buildingFeatures });
 
     if (!m.getLayer("lines-layer")) {
       m.addLayer({
@@ -378,20 +329,6 @@ export function GridMap({ data }: { data: MapData }) {
           "circle-stroke-color": "#e2e8f0",
         },
       });
-      // 3D buildings extrusion — Image 2 reference, visible when 3D toggled
-      if (!m.getLayer("buildings3d-layer")) {
-        m.addLayer({
-          id: "buildings3d-layer",
-          type: "fill-extrusion",
-          source: "buildings3d",
-          paint: {
-            "fill-extrusion-color": ["interpolate", ["linear"], ["get", "height"], 6, "#cbd5e1", 14, "#94a3b8", 20, "#64748b"],
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": ["get", "base_height"],
-            "fill-extrusion-opacity": 0.85,
-          },
-        });
-      }
 
       const show = (e: maplibregl.MapLayerMouseEvent, kind: "bus" | "app") => {
         const f = e.features?.[0];
@@ -476,61 +413,36 @@ export function GridMap({ data }: { data: MapData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, styleTick, layer, data, buses, trafoLoading]);
 
-  // toggle 3D extrusion visibility
-  useEffect(() => {
-    const m = map.current;
-    if (!m || !m.getLayer("buildings3d-layer")) return;
-    const visible = show3D || imagery === "3d";
-    m.setLayoutProperty("buildings3d-layer", "visibility", visible ? "visible" : "none");
-  }, [show3D, imagery, ready, styleTick]);
-
   const active = LAYERS.find((l) => l.id === layer)!;
 
   return (
     <div className="space-y-3">
-      {/* Imagery mode — Map / Satellite / 3D — Image 2 reference */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
-        <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 p-0.5">
-          {(["map", "satellite", "3d"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { setImagery(m); if (m === "3d") setShow3D(true); }}
-              className={`rounded-md px-3 py-1 text-xs font-bold uppercase tracking-wide transition ${imagery === m ? "bg-sky-600 text-white shadow" : "text-slate-400 hover:text-slate-200"}`}
-            >
-              {m === "3d" ? "3D" : m === "map" ? "Map" : "Satellite"}
-            </button>
-          ))}
-        </div>
-        <label className="ml-2 flex items-center gap-1.5 text-xs text-slate-400">
-          <input type="checkbox" checked={show3D} onChange={(e) => { setShow3D(e.target.checked); if (e.target.checked) setImagery("3d"); }} className="h-3 w-3 rounded border-slate-700 accent-sky-500" />
-          3D Buildings
-        </label>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          {LAYERS.map((l) => (
-            <button
-              key={l.id}
-              onClick={() => setLayer(l.id)}
-              className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
-                layer === l.id
-                  ? "border-sky-600 bg-sky-950/60 text-sky-300"
-                  : "border-slate-700 text-slate-400 hover:bg-slate-800"
-              }`}
-            >
-              {l.label}
-            </button>
-          ))}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {LAYERS.map((l) => (
           <button
-            onClick={() => setBasemap((b) => !b)}
-            className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
-              basemap
-                ? "border-slate-600 bg-slate-800 text-slate-200"
+            key={l.id}
+            onClick={() => setLayer(l.id)}
+            className={`rounded-md border px-3 py-1.5 text-xs transition ${
+              layer === l.id
+                ? "border-sky-600 bg-sky-950/60 text-sky-300"
                 : "border-slate-700 text-slate-400 hover:bg-slate-800"
             }`}
-            title="Street basemap is context only — the feeder is not physically located here"
           >
-            {basemap ? "Streets on" : "Streets off"}
+            {l.label}
           </button>
-        </div>
+        ))}
+
+        <button
+          onClick={() => setBasemap((b) => !b)}
+          className={`ml-auto rounded-md border px-3 py-1.5 text-xs transition ${
+            basemap
+              ? "border-slate-600 bg-slate-800 text-slate-200"
+              : "border-slate-700 text-slate-400 hover:bg-slate-800"
+          }`}
+          title="Street basemap is context only — the feeder is not physically located here"
+        >
+          {basemap ? "Streets on" : "Streets off"}
+        </button>
       </div>
 
       <div className="relative rounded-xl border border-slate-800 bg-slate-950 p-1">

@@ -11,7 +11,6 @@ import type { Me, VendorSummary } from "@/lib/types";
 
 const LINKS = [
   { href: "/vendor/dashboard", label: "Dashboard" },
-  { href: "/vendor/map", label: "Map" },
   { href: "/vendor/applications", label: "My Applications" },
   { href: "/vendor/leads", label: "Leads" },
   { href: "/vendor/installations", label: "Installations" },

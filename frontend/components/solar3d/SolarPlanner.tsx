@@ -140,7 +140,6 @@ export function SolarPlanner({
   const [showTerrain, setShowTerrain] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [showSunPath, setShowSunPath] = useState(true);
-  const [imageryMode, setImageryMode] = useState<"map" | "satellite" | "3d">("3d");
 
   const [sky, setSky] = useState<SkyConditions | null>(null);
   const [skyError, setSkyError] = useState<string | null>(null);
@@ -384,57 +383,87 @@ export function SolarPlanner({
           </div>
 
 
-          {/* Solar Insights — matches Image 2 SOLAR ANALYSIS */}
+          {/* Solar Insights Card */}
           <div className="card space-y-3 border-sky-900/40 bg-slate-900/60">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Solar Analysis</h3>
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/40 px-3 py-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-xs text-white">✓</span>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-sky-300">
+              Solar Insights
+            </h3>
+
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs font-bold text-emerald-300">Excellent</div>
-                <div className="text-[11px] text-emerald-400/80">High solar exposure</div>
-                <div className="font-mono text-xs font-bold text-emerald-200">{Math.round(100 - (shading?.shadedFraction ?? 0.05) * 100 - 4)}% Usable Roof Area</div>
+                <div className="metric-label">Annual Generation</div>
+                <div className="font-mono text-sm text-slate-100">{annualGenKwh.toLocaleString()} kWh</div>
+              </div>
+              <div>
+                <div className="metric-label">Sunlight (Yearly)</div>
+                <div className="font-mono text-sm text-slate-100">{yearlySunlightKwh} kWh/m²</div>
+              </div>
+              <div>
+                <div className="metric-label">Performance Ratio</div>
+                <div className="font-mono text-sm text-slate-100">{performanceRatioPct}%</div>
+              </div>
+              <div>
+                <div className="metric-label">CO₂ Offset (Yearly)</div>
+                <div className="font-mono text-sm text-emerald-400">{co2OffsetTonnes} Tonnes</div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="flex justify-between rounded bg-slate-950/50 px-2 py-1.5"><span className="text-slate-500">Annual Generation</span><span className="font-mono font-semibold text-slate-200">{annualGenKwh.toLocaleString()} kWh</span></div>
-              <div className="flex justify-between rounded bg-slate-950/50 px-2 py-1.5"><span className="text-slate-500">Performance Ratio</span><span className="font-mono font-semibold text-slate-200">{performanceRatioPct}%</span></div>
-              <div className="flex justify-between rounded bg-slate-950/50 px-2 py-1.5"><span className="text-slate-500">Specific Yield</span><span className="font-mono font-semibold text-slate-200">1,449 kWh/kWp</span></div>
-              <div className="flex justify-between rounded bg-slate-950/50 px-2 py-1.5"><span className="text-slate-500">CO₂ Offset / Year</span><span className="font-mono font-semibold text-emerald-400">{co2OffsetTonnes} Tonnes</span></div>
+
+            <div className="rounded-lg border border-emerald-800/80 bg-emerald-950/40 p-2.5 text-xs text-emerald-300">
+              <div className="font-semibold">🟢 Excellent for Solar!</div>
+              <p className="mt-0.5 text-[11px] text-emerald-400/80">High generation potential detected for this rooftop.</p>
             </div>
           </div>
         </div>
 
         {/* Center Column: 3D Cesium Globe View */}
         <div className="space-y-3 lg:col-span-6">
-          {/* Top Map Mode + Checkboxes — reference Image 2 */}
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs text-slate-300 shadow">
-            <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 p-0.5">
-              {(["map", "satellite", "3d"] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setImageryMode(m)}
-                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide transition ${imageryMode === m ? "bg-sky-600 text-white shadow" : "text-slate-400 hover:text-slate-200"}`}
-                >
-                  {m === "3d" ? "3D" : m === "map" ? "Map" : "Satellite"}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-1 cursor-pointer hover:text-sky-300 text-[11px]">
-                <input type="checkbox" checked={showBuildings} onChange={(e) => setShowBuildings(e.target.checked)} className="rounded border-slate-700 accent-sky-500 h-3 w-3" />
+          {/* Top Checkboxes Overlay */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 shadow">
+            <div className="flex flex-wrap items-center gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
+                <input
+                  type="checkbox"
+                  checked={showBuildings}
+                  onChange={(e) => setShowBuildings(e.target.checked)}
+                  className="rounded border-slate-700 accent-sky-500"
+                />
                 3D Buildings
               </label>
-              <label className="flex items-center gap-1 cursor-pointer hover:text-sky-300 text-[11px]">
-                <input type="checkbox" checked={showSunPath} onChange={(e) => setShowSunPath(e.target.checked)} className="rounded border-slate-700 accent-sky-500 h-3 w-3" />
-                Sun Path
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
+                <input
+                  type="checkbox"
+                  checked={showTerrain}
+                  onChange={(e) => setShowTerrain(e.target.checked)}
+                  className="rounded border-slate-700 accent-sky-500"
+                />
+                Terrain
               </label>
-              <label className="flex items-center gap-1 cursor-pointer hover:text-sky-300 text-[11px]">
-                <input type="checkbox" checked={showShadows} onChange={(e) => setShowShadows(e.target.checked)} className="rounded border-slate-700 accent-sky-500 h-3 w-3" />
-                Shadows
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer hover:text-sky-300 text-[11px]">
-                <input type="checkbox" checked={showLabels} onChange={(e) => setShowLabels(e.target.checked)} className="rounded border-slate-700 accent-sky-500 h-3 w-3" />
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => setShowLabels(e.target.checked)}
+                  className="rounded border-slate-700 accent-sky-500"
+                />
                 Labels
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
+                <input
+                  type="checkbox"
+                  checked={showSunPath}
+                  onChange={(e) => setShowSunPath(e.target.checked)}
+                  className="rounded border-slate-700 accent-sky-500"
+                />
+                Sun Rays
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-300">
+                <input
+                  type="checkbox"
+                  checked={showShadows}
+                  onChange={(e) => setShowShadows(e.target.checked)}
+                  className="rounded border-slate-700 accent-sky-500"
+                />
+                Shadows
               </label>
             </div>
             <button
@@ -442,7 +471,7 @@ export function SolarPlanner({
               onClick={() => setUnits((u) => (u === "m" ? "ft" : "m"))}
               className="rounded border border-slate-700 px-2 py-0.5 text-[11px] text-slate-400 transition hover:bg-slate-800"
             >
-              {units === "m" ? "m" : "ft"}
+              Units: {units === "m" ? "Metres" : "Feet"}
             </button>
           </div>
 
@@ -526,66 +555,107 @@ export function SolarPlanner({
 
         {/* Right Column: Sunlight Analysis & Panel Configuration */}
         <div className="space-y-4 lg:col-span-3">
-          {/* Sunlight Exposure — Image 2 style */}
+          {/* Sunlight Analysis Card */}
           <div className="card space-y-3">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Sunlight Exposure</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-300">
+              Sunlight Analysis
+            </h3>
+
+            {/*
+              What the sky is doing right now, from Open-Meteo. It sits above
+              the date picker because it applies to this moment only: move the
+              clock to next Tuesday and the cloud figure below stops describing
+              it. Absent, it says absent — the dashed rays are still drawn from
+              the computed sun position, which needs no forecast.
+            */}
             <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
               {sky ? (
-                <div className="flex items-baseline justify-between gap-2 text-xs">
-                  <span className="font-medium text-amber-200">{skyLabel(sky.cloudCoverPct)}</span>
-                  <span className="font-mono text-amber-300">{Math.round(sky.cloudCoverPct)}% cloud · {Math.round(sky.directNormalWm2)} W/m²</span>
-                </div>
+                <>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="font-medium text-amber-200">
+                      {skyLabel(sky.cloudCoverPct)}
+                    </span>
+                    <span className="font-mono text-amber-300">
+                      {Math.round(sky.cloudCoverPct)}% cloud
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+                    <span>Beam {Math.round(sky.directNormalWm2)} W/m²</span>
+                    <span>Horizontal {Math.round(sky.globalHorizontalWm2)} W/m²</span>
+                    {Number.isFinite(sky.temperatureC) && (
+                      <span>{sky.temperatureC.toFixed(0)}°C</span>
+                    )}
+                  </div>
+                  <div className="mt-1 text-[10px] text-slate-500">
+                    Measured{" "}
+                    {sky.observedAt.toLocaleTimeString(undefined, {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    · Open-Meteo
+                  </div>
+                </>
               ) : (
-                <div className="text-[11px] text-slate-500">{skyError ?? "Reading live sky…"} Sun direction is computed.</div>
+                <div className="text-[11px] text-slate-500">
+                  {skyError ?? "Reading live sky conditions…"} Sun direction is
+                  still exact — it is computed, not forecast.
+                </div>
               )}
             </div>
+
             <div>
-              <label className="label text-xs">Day: {when.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" })}</label>
-              <input type="datetime-local" className="input !py-1.5 !text-xs font-mono" value={toLocalInputValue(when)} onChange={(e) => { const n = new Date(e.target.value); if (!Number.isNaN(n.getTime())) setWhen(n); }} />
+              <label className="label text-xs">Date & Time</label>
+              <input
+                type="datetime-local"
+                className="input !py-1.5 !text-xs font-mono"
+                value={toLocalInputValue(when)}
+                onChange={(e) => {
+                  const next = new Date(e.target.value);
+                  if (!Number.isNaN(next.getTime())) setWhen(next);
+                }}
+              />
             </div>
-            <div>
-              <label className="label text-xs">Time: {when.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</label>
-              <input type="range" min={0} max={1439} step={15} value={when.getHours() * 60 + when.getMinutes()} onChange={(e) => { const m = Number(e.target.value); const d = new Date(when); d.setHours(Math.floor(m / 60), m % 60, 0, 0); setWhen(d); }} className="w-full accent-sky-500" />
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setWhen(new Date())}
+                className="btn-ghost flex-1 !py-1.5 !text-xs"
+              >
+                Use Current Time
+              </button>
             </div>
+
             <div className="grid grid-cols-2 gap-2 text-xs">
+              <Metric label="Irradiance" value={sun.isDaylight ? `${irradiance} W/m²` : "0 W/m² (Night)"} />
               <Metric label="Sun Elevation" value={`${sun.elevation.toFixed(1)}°`} />
               <Metric label="Sun Azimuth" value={`${sun.azimuth.toFixed(1)}° ${compassLabel(sun.azimuth)}`} />
-              <Metric label="Irradiance" value={sun.isDaylight ? `${irradiance} W/m²` : "0 W/m²"} />
               <Metric label="Incidence" value={`${(incidenceCosine(sun, tiltDeg, azimuthDeg) * 100).toFixed(0)}%`} />
             </div>
-            <button type="button" onClick={() => setWhen(new Date())} className="btn-ghost w-full !py-1.5 !text-xs">Use Current Time</button>
-          </div>
 
-          {/* Shadow Analysis — mini preview */}
-          <div className="card space-y-2">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Shadow Analysis</h3>
-            <div className="flex items-center gap-2 text-[11px]">
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Full Sun</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" />Partial Shade</span>
-              <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" />Full Shade</span>
-            </div>
-            {/* Mini isometric preview */}
-            <div className="relative h-[112px] overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="relative h-16 w-28 rotate-[-14deg] transform">
-                  <div className="absolute inset-0 rounded border border-slate-600 bg-slate-800 shadow-lg" />
-                  <div className="absolute left-1 top-1 grid grid-cols-4 gap-0.5">
-                    {Array.from({ length: 12 }).map((_, i) => {
-                      const r = i < 8 ? "bg-sky-800" : i < 10 ? "bg-amber-600/60" : "bg-red-800/60";
-                      return <div key={i} className={`h-2.5 w-3 rounded-[1px] ${r} border border-white/10`} />;
-                    })}
-                  </div>
-                  {/* shadow cast */}
-                  <div className="absolute -right-2 -bottom-1 h-6 w-20 -rotate-12 rounded bg-red-500/20 blur-[1px]" />
-                </div>
+            <hr className="border-slate-800" />
+
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between text-slate-300">
+                <span>🟢 Direct Sunlight</span>
+                <span className="font-mono">{directSunlightPct}%</span>
               </div>
-              <div className="absolute bottom-1 left-2 text-[10px] font-mono text-slate-500">{directSunlightPct}% full sun · {partialShadePct}% partial</div>
+              <div className="flex justify-between text-amber-300">
+                <span>🟡 Partial Shade</span>
+                <span className="font-mono">{partialShadePct}%</span>
+              </div>
+              <div className="flex justify-between text-red-400">
+                <span>🔴 Full Shade</span>
+                <span className="font-mono">{fullShadePct}%</span>
+              </div>
             </div>
           </div>
 
-          {/* Panel Settings — Image 2 */}
+          {/* Panel Configuration Card */}
           <div className="card space-y-3">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Panel Settings</h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-sky-300">
+              Panel Configuration
+            </h3>
 
             <div>
               <div className="flex justify-between text-xs text-slate-300 mb-1">
@@ -704,24 +774,10 @@ export function SolarPlanner({
             >
               {assessingGrid ? "Running Power Flow Assessment..." : "Use This Placement & Assess Grid Impact"}
             </button>
-            <button type="button" onClick={() => setWhen(solarNoon(new Date(), latitude, longitude))} className="btn-ghost w-full !py-1.5 text-xs">↺ Reset View</button>
           </div>
         </div>
       </div>
 
-      {/* Bottom summary bar — Image 2 reference */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/90 px-4 py-2 text-[11px] font-mono text-slate-400">
-        <span>Selected Area <b className="text-slate-200">{layout.occupiedAreaSqm.toFixed(1)} m²</b></span>
-        <span>Panels <b className="text-slate-200">{layout.panelCount}</b></span>
-        <span>System Size <b className="text-sky-400">{layout.actualCapacityKw.toFixed(1)} kW</b></span>
-        <span>Tilt / Azimuth <b className="text-slate-200">{tiltDeg}° / {azimuthDeg}°</b></span>
-        <span>Min. Spacing <b className="text-slate-200">{rowSpacingM} m</b></span>
-        <span className="flex items-center gap-2">
-          <span className="rounded bg-slate-800 px-2 py-0.5">Sun Path</span>
-          <span className="rounded bg-slate-800 px-2 py-0.5">Shadows</span>
-          <span className="rounded bg-slate-800 px-2 py-0.5">Roof Info</span>
-        </span>
-      </div>
 
     </div>
   );

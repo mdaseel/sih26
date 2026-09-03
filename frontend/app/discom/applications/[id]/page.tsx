@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { ProbabilityBar, RiskBadge } from "@/components/RiskBadge";
-import { DigitalTwinView } from "@/components/twin/DigitalTwinView";
+import { TwinDiagram } from "@/components/TwinDiagram";
 import { api, ApiError, discomApi } from "@/lib/api";
 import type { DiscomApplicationDetail, TwinResponse } from "@/lib/types";
 
@@ -138,15 +138,8 @@ export default function DiscomApplicationReview() {
         </div>
       </div>
 
-      {/* ---- Digital Twin grid impact ---- */}
-      {twin && (
-        <DigitalTwinView
-          twin={twin}
-          busId={a?.pv_bus}
-          title="Grid Connection Digital Twin"
-          subtitle="Review applicant grid impact in 3D aerial distribution twin or 2D schematic"
-        />
-      )}
+      {/* ---- 2D grid impact ---- */}
+      {twin && <TwinDiagram twin={twin} />}
 
       {/* ---- ML vs engineering ---- */}
       {assessment && (

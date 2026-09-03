@@ -6,26 +6,17 @@ import { useEffect, useState } from "react";
 
 import { GridMap } from "@/components/GridMap";
 import { SolarPlanner } from "@/components/solar3d/SolarPlanner";
-import { DigitalTwinView } from "@/components/twin/DigitalTwinView";
 import { api, ApiError } from "@/lib/api";
-import type { MapData, TwinResponse } from "@/lib/types";
+import type { MapData } from "@/lib/types";
 
 export default function DiscomMapPage() {
   const [data, setData] = useState<MapData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapMode, setMapMode] = useState<"2D" | "3D">("2D");
-  const [twin, setTwin] = useState<TwinResponse | null>(null);
-  const [busId, setBusId] = useState("734");
 
   useEffect(() => {
     api.map().then(setData).catch((e: ApiError) => setError(e.message));
   }, []);
-
-  useEffect(() => {
-    if (mapMode === "3D" && !twin) {
-      api.twin({ pv_bus: busId, existing_pv_kw: 0, new_pv_kw: 25 }).then(setTwin).catch(() => {});
-    }
-  }, [mapMode, twin, busId]);
 
   return (
     <div className="space-y-6">
@@ -69,29 +60,17 @@ export default function DiscomMapPage() {
         mapMode === "2D" ? (
           <GridMap data={data} />
         ) : (
-          <div className="space-y-6">
-            <DigitalTwinView
-              twin={twin}
-              busId={busId}
-              onSelectBus={(b) => {
-                setBusId(b);
-                api.twin({ pv_bus: b, existing_pv_kw: 0, new_pv_kw: 25 }).then(setTwin).catch(() => {});
-              }}
-              title="Feeder 3D Digital Twin"
-              subtitle="Interactive 3D network topology & power flow schematic"
+          <div className="card space-y-4">
+            <h2 className="text-sm font-semibold text-slate-200">
+              Feeder 3D Digital Twin & Rooftop Assessment
+            </h2>
+            <SolarPlanner
+              latitude={18.5204}
+              longitude={73.8567}
+              initialCapacityKw={5}
+              pvBus="734"
+              roofAreaSqm={75}
             />
-            <div className="card space-y-4">
-              <h2 className="text-sm font-semibold text-slate-200">
-                Rooftop 3D Solar Assessment
-              </h2>
-              <SolarPlanner
-                latitude={18.5204}
-                longitude={73.8567}
-                initialCapacityKw={5}
-                pvBus={busId}
-                roofAreaSqm={75}
-              />
-            </div>
           </div>
         )
       ) : (

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { DigitalTwinView } from "@/components/twin/DigitalTwinView";
 import { RiskBadge } from "@/components/RiskBadge";
+import { TwinDiagram } from "@/components/TwinDiagram";
 import { api, ApiError } from "@/lib/api";
 import type { Bus, TwinResponse } from "@/lib/types";
 
@@ -107,23 +107,7 @@ export default function DiscomGridTwin() {
         </div>
       </div>
 
-      {/* Unified Digital Twin View with 3D/2D Toggle */}
-      <DigitalTwinView
-        twin={twin}
-        busId={busId}
-        onSelectBus={setBusId}
-        title="Feeder Distribution Twin"
-        subtitle="Real-time 3D aerial digital twin & 2D single-line power flow schematic"
-      />
-
-      {!twin && !busy && (
-        <div className="card border-dashed">
-          <p className="text-sm text-slate-500">
-            Run a simulation above to populate the 3D/2D twin with live power-flow results. The substation, feeders, transformers and neighbourhood
-            are rendered from the feeder topology — realtime for any bus you select.
-          </p>
-        </div>
-      )}
+      {twin && <TwinDiagram twin={twin} />}
     </div>
   );
 }

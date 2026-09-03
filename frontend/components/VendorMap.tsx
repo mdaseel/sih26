@@ -33,8 +33,6 @@ export function VendorMap({ data }: { data: CitizenMapData }) {
   const [ready, setReady] = useState(false);
   const [styleTick, setStyleTick] = useState(0);
   const [showAll, setShowAll] = useState(true);
-  const [imagery, setImagery] = useState<"map" | "satellite" | "3d">("map");
-  const [show3D, setShow3D] = useState(false);
 
   const sites = useMemo(
     () => data.applications.filter((a) => a.latitude != null && a.longitude != null),
@@ -113,16 +111,6 @@ export function VendorMap({ data }: { data: CitizenMapData }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasGeography]);
 
-  // imagery / pitch effect
-  useEffect(() => {
-    const m = map.current;
-    if (!m || !m.isStyleLoaded()) return;
-    if (imagery === "3d" || show3D) m.easeTo({ pitch: 58, bearing: -14, duration: 800 });
-    else m.easeTo({ pitch: 0, bearing: 0, duration: 600 });
-    const vis = show3D || imagery === "3d" ? "visible" : "none";
-    if (m.getLayer("buildings3d-layer")) m.setLayoutProperty("buildings3d-layer", "visibility", vis);
-  }, [imagery, show3D, ready, styleTick]);
-
   // ---- (re)draw ----
   useEffect(() => {
     const m = map.current;
@@ -197,24 +185,9 @@ export function VendorMap({ data }: { data: CitizenMapData }) {
       else m.addSource(id, { type: "geojson", data: value as never });
     };
 
-    // synthetic 3D building blocks around sites/vendors — Image 2 reference, any area
-    const buildingFeatures = [...sites, ...visibleVendors.map((v: any) => ({ longitude: v.longitude, latitude: v.latitude }))]
-      .filter((p: any) => p.longitude != null && p.latitude != null)
-      .flatMap((p: any, idx: number) => {
-        const lon = p.longitude as number;
-        const lat = p.latitude as number;
-        const d = 0.00028;
-        const h = 10 + (idx % 7) * 2;
-        return [
-          { type: "Feature" as const, properties: { height: h, base_height: 0 }, geometry: { type: "Polygon" as const, coordinates: [[[lon - d, lat - d], [lon + d, lat - d], [lon + d, lat + d], [lon - d, lat + d], [lon - d, lat - d]]] } },
-          { type: "Feature" as const, properties: { height: Math.max(6, h - 4), base_height: 0 }, geometry: { type: "Polygon" as const, coordinates: [[[lon + 0.00045, lat + 0.0003 - d], [lon + 0.00045 + d * 1.2, lat + 0.0003 - d], [lon + 0.00045 + d * 1.2, lat + 0.0003 + d], [lon + 0.00045, lat + 0.0003 + d], [lon + 0.00045, lat + 0.0003 - d]]] } },
-        ];
-      });
-
     set("routes", { type: "FeatureCollection", features: routeFeatures });
     set("vendors", { type: "FeatureCollection", features: vendorFeatures });
     set("sites", { type: "FeatureCollection", features: siteFeatures });
-    set("buildings3d", { type: "FeatureCollection", features: buildingFeatures });
 
     if (!m.getLayer("routes-solid")) {
       // Routes sit under everything: they are context for the pins, not the
@@ -287,21 +260,6 @@ export function VendorMap({ data }: { data: CitizenMapData }) {
           "circle-stroke-color": "#e2e8f0",
         },
       });
-      if (!m.getLayer("buildings3d-layer")) {
-        m.addLayer({
-          id: "buildings3d-layer",
-          type: "fill-extrusion",
-          source: "buildings3d",
-          paint: {
-            "fill-extrusion-color": ["interpolate", ["linear"], ["get", "height"], 6, "#cbd5e1", 14, "#94a3b8", 20, "#64748b"],
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": ["get", "base_height"],
-            "fill-extrusion-opacity": 0.82,
-          },
-        });
-      }
-      // keep buildings under pins: move to just below vendor layer
-      try { m.moveLayer("vendor-labels"); m.moveLayer("vendors-layer"); m.moveLayer("sites-layer"); } catch {}
 
       const esc = (v: unknown) =>
         String(v ?? "").replace(
@@ -389,18 +347,27 @@ export function VendorMap({ data }: { data: CitizenMapData }) {
 
   return (
     <div className="space-y-3">
-      {/* Imagery mode — Image 2 */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
-        <div className="flex items-center gap-1 rounded-lg border border-slate-700 bg-slate-950 p-0.5">
-          {(["map", "satellite", "3d"] as const).map((m) => (
-            <button key={m} onClick={() => { setImagery(m); if (m === "3d") setShow3D(true); }} className={`rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide transition ${imagery === m ? "bg-sky-600 text-white" : "text-slate-400 hover:text-slate-200"}`}>{m === "3d" ? "3D" : m === "map" ? "Map" : "Satellite"}</button>
-          ))}
-        </div>
-        <label className="ml-2 flex items-center gap-1.5 text-xs text-slate-400"><input type="checkbox" checked={show3D} onChange={(e) => { setShow3D(e.target.checked); if (e.target.checked) setImagery("3d"); }} className="h-3 w-3 rounded border-slate-700 accent-sky-500" />3D Buildings</label>
-        <div className="ml-auto flex gap-2">
-          <button onClick={() => setShowAll(true)} className={`rounded-md border px-3 py-1.5 text-xs transition ${showAll ? "border-sky-600 bg-sky-950/60 text-sky-300" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>All verified ({vendors.length})</button>
-          <button onClick={() => setShowAll(false)} className={`rounded-md border px-3 py-1.5 text-xs transition ${!showAll ? "border-sky-600 bg-sky-950/60 text-sky-300" : "border-slate-700 text-slate-400 hover:bg-slate-800"}`}>Only mine ({vendors.filter((v) => v.engaged || v.requested).length})</button>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setShowAll(true)}
+          className={`rounded-md border px-3 py-1.5 text-xs transition ${
+            showAll
+              ? "border-sky-600 bg-sky-950/60 text-sky-300"
+              : "border-slate-700 text-slate-400 hover:bg-slate-800"
+          }`}
+        >
+          All verified installers ({vendors.length})
+        </button>
+        <button
+          onClick={() => setShowAll(false)}
+          className={`rounded-md border px-3 py-1.5 text-xs transition ${
+            !showAll
+              ? "border-sky-600 bg-sky-950/60 text-sky-300"
+              : "border-slate-700 text-slate-400 hover:bg-slate-800"
+          }`}
+        >
+          Only mine ({vendors.filter((v) => v.engaged || v.requested).length})
+        </button>
       </div>
 
       <div className="relative rounded-xl border border-slate-800 bg-slate-950 p-1">

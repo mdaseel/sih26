@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { RiskBadge } from "@/components/RiskBadge";
-import { TwinDiagram } from "@/components/TwinDiagram";
+import { DigitalTwinView } from "@/components/twin/DigitalTwinView";
 import { api, ApiError, discomApi } from "@/lib/api";
 import type { Bus, TwinResponse, WhatIfResult } from "@/lib/types";
 
@@ -293,7 +293,13 @@ export default function DiscomWhatIf() {
           <div className="mb-2 text-xs uppercase tracking-wide text-slate-500">
             Digital twin at {selectedKw} kW
           </div>
-          <TwinDiagram twin={twin} />
+          <DigitalTwinView
+            twin={twin}
+            busId={busId}
+            onSelectBus={setBusId}
+            title={`Digital twin at ${selectedKw} kW`}
+            subtitle="Explore grid impact in 3D aerial view or 2D single-line schematic"
+          />
         </div>
       )}
 

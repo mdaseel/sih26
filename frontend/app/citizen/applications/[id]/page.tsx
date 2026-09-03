@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApplicationTracker } from "@/components/ApplicationTracker";
 import { AssessmentResult } from "@/components/AssessmentResult";
-import { TwinDiagram } from "@/components/TwinDiagram";
+import { DigitalTwinView } from "@/components/twin/DigitalTwinView";
 import { api, ApiError } from "@/lib/api";
 import type {
   ApplicationStatus,
@@ -312,7 +312,14 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {twin && <TwinDiagram twin={twin} />}
+          {twin && (
+            <DigitalTwinView
+              twin={twin}
+              busId={app?.pv_bus}
+              title="Your Rooftop & Neighborhood Grid Twin"
+              subtitle="View your connection point in 3D aerial digital twin or 2D schematic"
+            />
+          )}
 
           {assessment && <AssessmentResult result={assessment} />}
 

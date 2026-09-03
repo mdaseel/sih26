@@ -865,6 +865,89 @@ ${skyLabel(cloudCoverPct)} · ${Math.round(cloudCoverPct)}% cloud`
     surfaceTick,
   ]);
 
+  // ---- sun path arc — dashed yellow curve overhead (Image 2) ----
+  const sunArcEntities = useRef<any[]>([]);
+  useEffect(() => {
+    const v = viewer.current;
+    const Cesium = cesium.current;
+    if (!ready || !v || !Cesium) return;
+    for (const e of sunArcEntities.current) v.entities.remove(e);
+    sunArcEntities.current = [];
+    if (!showSunRays) return;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    const base = (surfaceHeight.current ?? 0) + mountHeightM;
+    const metresPerDegLat = 111_320;
+    const metresPerDegLon = 111_320 * Math.cos((latitude * Math.PI) / 180);
+    const arcPts: any[] = [];
+    const sunMarkers: { pos: any; label: string }[] = [];
+    for (let mins = 360; mins <= 1110; mins += 18) {
+      const d = new Date(when);
+      d.setHours(0, 0, 0, 0);
+      d.setMinutes(mins);
+      const s = sunPosition(d, latitude, longitude);
+      if (s.elevation <= 5) continue;
+      const r = 42;
+      const el = (s.elevation * Math.PI) / 180;
+      const az = (s.azimuth * Math.PI) / 180;
+      const east = Math.cos(el) * Math.sin(az) * r;
+      const north = Math.cos(el) * Math.cos(az) * r;
+      const up = Math.sin(el) * r;
+      arcPts.push(
+        Cesium.Cartesian3.fromDegrees(
+          longitude + east / metresPerDegLon,
+          latitude + north / metresPerDegLat,
+          base + up
+        )
+      );
+      if ([360, 720, 1110].includes(mins)) {
+        const hh = String(Math.floor(mins / 60)).padStart(2, "0");
+        const mm = String(mins % 60).padStart(2, "0");
+        sunMarkers.push({
+          pos: Cesium.Cartesian3.fromDegrees(
+            longitude + east / metresPerDegLon,
+            latitude + north / metresPerDegLat,
+            base + up
+          ),
+          label: `${hh}:${mm} ${mins < 720 ? "AM" : "PM"}`,
+        });
+      }
+    }
+    if (arcPts.length > 1) {
+      sunArcEntities.current.push(
+        v.entities.add({
+          polyline: {
+            positions: arcPts,
+            width: 2,
+            material: new Cesium.PolylineDashMaterialProperty({
+              color: Cesium.Color.fromCssColorString("#facc15").withAlpha(0.85),
+              dashLength: 12,
+            }),
+            arcType: Cesium.ArcType.NONE,
+          },
+        })
+      );
+      for (const m of sunMarkers) {
+        sunArcEntities.current.push(
+          v.entities.add({
+            position: m.pos,
+            point: { pixelSize: 10, color: Cesium.Color.fromCssColorString("#facc15"), outlineColor: Cesium.Color.WHITE, outlineWidth: 2, disableDepthTestDistance: Number.POSITIVE_INFINITY },
+            label: {
+              text: m.label,
+              font: "10px sans-serif",
+              fillColor: Cesium.Color.fromCssColorString("#facc15"),
+              outlineColor: Cesium.Color.fromCssColorString("#0f172a"),
+              outlineWidth: 2,
+              pixelOffset: new Cesium.Cartesian2(0, -14),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          })
+        );
+      }
+    }
+    v.scene.requestRender?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, latitude, longitude, when, mountHeightM, showSunRays, surfaceTick]);
+
   // ---- risk overlay on the site ----
   //
   // A ring on the ground under the array, coloured by the engineering verdict

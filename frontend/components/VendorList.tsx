@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
+import { engagementApi } from "@/lib/api";
 import type { PublicVendor, VendorDiscovery } from "@/lib/types";
 
 /**
@@ -68,6 +71,15 @@ export function VendorList({ data }: { data: VendorDiscovery }) {
 }
 
 function VendorCard({ vendor: v, routed }: { vendor: PublicVendor; routed: boolean }) {
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
+  useEffect(() => {
+    let live = true;
+    engagementApi
+      .vendorReviewSummary(v.id)
+      .then((s) => { if (live) setReviewCount(s.count); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [v.id]);
   return (
     <div className="card">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -105,7 +117,10 @@ function VendorCard({ vendor: v, routed }: { vendor: PublicVendor; routed: boole
       </div>
 
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-        <Row label="Rating" value={v.rating != null ? `${v.rating.toFixed(1)} / 5` : null} />
+        <Row
+          label="Rating"
+          value={v.rating != null ? `★ ${v.rating.toFixed(1)} / 5${reviewCount != null && reviewCount > 0 ? ` (${reviewCount})` : ""}` : null}
+        />
         <Row
           label="Completed installations"
           value={v.completed_installations != null ? String(v.completed_installations) : null}

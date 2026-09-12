@@ -10,11 +10,13 @@ export default function VendorDashboard() {
   const [opps, setOpps] = useState<Opp[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [ratings, setRatings] = useState<{ average: number | null; count: number; reviews: { rating: number; tags: string[]; comment: string | null; created_at: string }[] } | null>(null);
   const load = useCallback(async () => {
     const [s, l, o] = await Promise.allSettled([vendorApi.summary(), vendorApi.leads(), vendorApi.opportunities().catch(() => [] as Opp[])]);
     if (s.status === "fulfilled") setSummary(s.value as VendorSummary); else setError((s.reason as ApiError).message);
     if (l.status === "fulfilled") setLeads(l.value as Lead[]);
     if (o.status === "fulfilled") setOpps(o.value as Opp[]);
+    vendorApi.myRatings().then(setRatings).catch(() => {});
   }, []);
   useEffect(() => { load(); const id = setInterval(load, 15000); return () => clearInterval(id); }, [load]);
   const newLeads = leads.filter((l) => ["REQUESTED","RESCHEDULED"].includes(l.status));
@@ -37,6 +39,24 @@ export default function VendorDashboard() {
             <Stat label="Awaiting verification" value={summary.awaiting_discom_verification} accent="amber" />
           </div>
           <div className="rounded-xl border p-3 text-xs" style={{ borderColor: "rgb(var(--line))", background: "rgb(var(--panel-raised))", color: "rgb(var(--ink-faint))" }}>{summary.verification_note}</div>
+          <div className="rounded-xl border p-4" style={{ borderColor: "rgb(var(--line))", background: "rgb(var(--panel))" }}>
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-bold" style={{ color: "rgb(var(--ink))" }}>My ratings</h2>
+              <span className="text-sm font-bold" style={{ color: "rgb(var(--ink))" }}>
+                {ratings && ratings.average != null ? `★ ${ratings.average.toFixed(1)} / 5 (${ratings.count})` : "Not rated yet"}
+              </span>
+            </div>
+            {ratings && ratings.reviews.length > 0 ? (
+              <ul className="mt-2 space-y-1.5 text-xs" style={{ color: "rgb(var(--ink-faint))" }}>
+                {ratings.reviews.slice(0, 3).map((r, i) => (
+                  <li key={i}>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)} {r.tags.join(" · ")}
+                    {r.comment ? ` — “${r.comment}”` : ""}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-xs" style={{ color: "rgb(var(--ink-faint))" }}>Citizens can rate you once an installation completes.</p>
+            )}
+          </div>
         </>
       ) : !error && <div className="grid gap-4 sm:grid-cols-5">{[1,2,3,4,5].map(i => <div key={i} className="h-24 rounded-2xl shimmer" />)}</div>}
 

@@ -25,10 +25,16 @@ export default function DiscomVendors() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [reason, setReason] = useState<Record<string, string>>({});
+  const [flags, setFlags] = useState<{ vendor: { id: string; business_name: string; status: string; rating: number | null }; flag: Record<string, unknown> }[]>([]);
 
   const load = useCallback(async () => {
     try {
-      setData(await discomApi.vendors());
+      const [vendors, ratingFlags] = await Promise.all([
+        discomApi.vendors(),
+        discomApi.ratingFlags().catch(() => ({ flags: [], count: 0 })),
+      ]);
+      setData(vendors);
+      setFlags(ratingFlags.flags);
     } catch (e) {
       setError((e as ApiError).message);
     }
@@ -75,6 +81,25 @@ export default function DiscomVendors() {
         </div>
       )}
 
+      {flags.length > 0 && (
+        <div className="rounded-xl border border-red-900 bg-red-950/30 p-4">
+          <h2 className="text-sm font-semibold text-red-200">
+            ⚠️ Quality flags ({flags.length}) — review before these vendors take more work
+          </h2>
+          <ul className="mt-2 space-y-1 text-xs text-red-200/90">
+            {flags.map((f) => (
+              <li key={f.vendor.id}>
+                <b>{f.vendor.business_name}</b> —{" "}
+                {String(f.flag.rule) === "low_average"
+                  ? `average ${Number(f.flag.average).toFixed(1)} over ${String(f.flag.count)} reviews`
+                  : `${String(f.flag.recent_ones)} one-star reviews in 90 days`}{" "}
+                (status: {f.vendor.status.replace(/_/g, " ")})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {data === null && !error && <p className="text-sm text-slate-500">Loading…</p>}
 
       <div className="space-y-3">
@@ -104,7 +129,11 @@ export default function DiscomVendors() {
                   <p className="mt-1 text-xs text-slate-500">
                     {v.years_experience ?? "—"} years · capacity{" "}
                     {v.installation_capacity_kw ?? "—"} kW · {v.completed_installations}{" "}
-                    completed · areas: {v.service_areas.join(", ") || "—"}
+                    completed · areas: {v.service_areas.join(", ") || "—"} · rating{" "}
+                    {v.rating != null ? `★ ${Number(v.rating).toFixed(1)} / 5` : "not rated yet"}
+                    {flags.some((f) => f.vendor.id === v.id) && (
+                      <span className="ml-1 text-red-300">⚠️ flagged</span>
+                    )}
                   </p>
                   {v.rejection_reason && (
                     <p className="mt-1 text-xs text-red-300">Reason: {v.rejection_reason}</p>

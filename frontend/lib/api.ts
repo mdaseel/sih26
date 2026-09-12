@@ -325,6 +325,12 @@ export const discomApi = {
   installationPhotoUrl: (documentId: string) =>
     request<{ url: string }>(`/api/discom/documents/${documentId}/url`),
 
+  /** Vendors breaching the quality-flag rule, with evidence. */
+  ratingFlags: () =>
+    request<{ flags: { vendor: { id: string; business_name: string; status: string; rating: number | null }; flag: Record<string, unknown> }[]; count: number }>(
+      "/api/discom/vendors/rating-flags"
+    ),
+
   /** Every vendor, whatever their status, for the review queue. */
   vendors: () => request<VendorReviewList>("/api/discom/vendors"),
 
@@ -374,6 +380,12 @@ export const vendorApi = {
   /** Short-lived link to one of this vendor's own documents. */
   documentUrl: (documentId: string) =>
     request<{ url: string }>(`/api/vendor/documents/${documentId}/url`),
+
+  /** This vendor's own average, count and recent feedback. */
+  myRatings: () =>
+    request<{ average: number | null; count: number; reviews: { rating: number; tags: string[]; comment: string | null; created_at: string }[] }>(
+      "/api/vendor/ratings"
+    ),
 
   /** Upload a site photo/document for the completion report. */
   uploadInstallationPhoto: async (file: File, documentType: string, notes?: string) => {
@@ -430,4 +442,17 @@ export const engagementApi = {
     }),
   appointments: (applicationId: string) =>
     request<Lead[]>(`/api/applications/${applicationId}/appointments`),
+  reviewEligibility: (applicationId: string, vendorId: string) =>
+    request<{ eligible: boolean; reason: string }>(
+      `/api/applications/${applicationId}/reviews/eligibility?vendor_id=${vendorId}`
+    ),
+  submitReview: (applicationId: string, body: { vendor_id: string; rating: number; tags: string[]; comment?: string }) =>
+    request<Record<string, unknown>>(`/api/applications/${applicationId}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  vendorReviewSummary: (vendorId: string) =>
+    request<{ average: number | null; count: number; tag_histogram: Record<string, number>; reviews: Record<string, unknown>[] }>(
+      `/api/vendors/${vendorId}/reviews`
+    ),
 };

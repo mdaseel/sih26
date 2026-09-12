@@ -1,0 +1,47 @@
+# ============================================================
+#  SolarGrid AI — Render blueprint (render.yaml)
+#  Dashboard → New → Blueprint → point at this repo.
+#
+#  Supabase stays hosted (DB/auth/storage); Render runs only the two apps.
+#  Secrets are set in the Render dashboard, never in this file.
+# ============================================================
+services:
+  - type: web
+    name: solargrid-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    plan: starterPlus
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: "8000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false # set to https://<frontend>.onrender.com after first deploy, then redeploy
+
+  - type: web
+    name: solargrid-frontend
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: starter
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false # https://solargrid-backend.onrender.com (your backend URL)
+      - key: NEXT_PUBLIC_CESIUM_ION_TOKEN
+        sync: false # optional — 3D works without, terrain is flat

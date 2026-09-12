@@ -9,6 +9,9 @@
 # --- Web framework ---
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
+# Multipart form parsing — required by the vendor document-upload endpoint.
+# Without it the app crashes at import (FastAPI raises on Form/File routes).
+python-multipart==0.0.32
 
 # --- Data validation & settings ---
 pydantic==2.11.4

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApplicationTracker } from "@/components/ApplicationTracker";
 import { AssessmentResult } from "@/components/AssessmentResult";
 import { TwinDiagram } from "@/components/TwinDiagram";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, engagementApi } from "@/lib/api";
 import type {
   ApplicationStatus,
   Assessment,
@@ -209,6 +209,8 @@ export default function ApplicationDetailPage() {
         <ApplicationTracker applicationId={id} status={app.status} />
       </div>
 
+      <RateInstaller applicationId={id} />
+
       {/* ---- what was submitted ---- */}
       <div className="card space-y-5">
         <h2 className="text-sm font-semibold text-slate-200">Your application</h2>
@@ -335,6 +337,113 @@ export default function ApplicationDetailPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const REVIEW_TAGS = [
+  "ON_TIME",
+  "CLEAN_WORK",
+  "GOOD_COMM",
+  "FAIR_PRICE",
+  "DELAYS",
+  "POOR_FINISH",
+  "UNPROFESSIONAL",
+] as const;
+
+/** Rate-the-installer card: visible only while an eligible (or editable) review exists. */
+function RateInstaller({ applicationId }: { applicationId: string }) {
+  const [vendorId, setVendorId] = useState<string | null>(null);
+  const [elig, setElig] = useState<{ eligible: boolean; reason: string } | null>(null);
+  const [stars, setStars] = useState(5);
+  const [tags, setTags] = useState<string[]>([]);
+  const [comment, setComment] = useState("");
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    engagementApi
+      .appointments(applicationId)
+      .then((leads) => {
+        const engaged = leads.find((l) =>
+          ["CONFIRMED", "RESCHEDULED", "COMPLETED"].includes(l.status)
+        );
+        setVendorId(engaged?.vendor_id ?? (leads[0]?.vendor_id as string | undefined) ?? null);
+      })
+      .catch(() => setVendorId(null));
+  }, [applicationId]);
+
+  useEffect(() => {
+    if (!vendorId) return;
+    engagementApi
+      .reviewEligibility(applicationId, vendorId)
+      .then(setElig)
+      .catch(() => setElig(null));
+  }, [applicationId, vendorId]);
+
+  if (!vendorId || elig === null || !elig.eligible) return null;
+
+  async function submit() {
+    if (!vendorId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await engagementApi.submitReview(applicationId, {
+        vendor_id: vendorId,
+        rating: stars,
+        tags,
+        comment: comment || undefined,
+      });
+      setDone(true);
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="card">
+        <p className="text-sm text-green-300">Thanks — your {stars}★ rating was recorded.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card space-y-3">
+      <h2 className="text-sm font-semibold text-slate-200">
+        Rate your installer {elig.reason === "edit" ? "(edit your review)" : ""}
+      </h2>
+      {error && <p className="text-xs text-red-300">{error}</p>}
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((s) => (
+          <button key={s} onClick={() => setStars(s)} aria-label={`${s} stars`}
+            className={`text-2xl ${s <= stars ? "text-amber-400" : "text-slate-600"}`}>
+            ★
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {REVIEW_TAGS.map((t) => (
+          <button key={t}
+            onClick={() => setTags((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]))}
+            className={`rounded-full border px-2.5 py-1 text-[11px] ${
+              tags.includes(t) ? "border-sky-600 bg-sky-950/60 text-sky-300" : "border-slate-700 text-slate-400"
+            }`}>
+            {t.replace(/_/g, " ")}
+          </button>
+        ))}
+      </div>
+      <textarea className="input min-h-[60px]" maxLength={500} placeholder="Optional comment (max 500 chars)…"
+        value={comment} onChange={(e) => setComment(e.target.value)} />
+      {stars <= 2 && tags.length === 0 && comment.trim() === "" && (
+        <p className="text-xs text-amber-300">A 1–2 star review needs at least one tag or a comment.</p>
+      )}
+      <button onClick={submit} disabled={busy} className="btn-primary !py-2 !text-xs">
+        {busy ? "Submitting…" : elig.reason === "edit" ? "Update review" : "Submit review"}
+      </button>
     </div>
   );
 }

@@ -109,6 +109,91 @@ def application_appointments(
 # ============================================================
 #  Vendor portal
 # ============================================================
+# ============================================================
+#  Vendor ratings — citizen feedback, DISCOM-readable
+# ============================================================
+class ReviewSubmit(BaseModel):
+    vendor_id: str
+    rating: int = Field(ge=1, le=5)
+    tags: list[str] = Field(default_factory=list, max_length=10)
+    comment: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/applications/{application_id}/reviews", status_code=201)
+def submit_review(
+    application_id: str, payload: ReviewSubmit,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Rate an engaged vendor (once per application, editable 7 days).
+
+    Eligibility: your application, real engagement, installation at COMPLETED
+    or beyond. Low (1-2★) reviews need a tag or comment.
+    """
+    from app.services import ratings as ratings_svc
+
+    vendor = (
+        db.as_service().table("vendors").select("id").eq("id", payload.vendor_id)
+        .limit(1).execute()
+    ).data
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    try:
+        row = ratings_svc.submit_review(
+            user.id, application_id, payload.vendor_id,
+            payload.rating, payload.tags, payload.comment,
+        )
+    except ratings_svc.RatingError as exc:
+        msg = str(exc)
+        if "already reviewed" in msg:
+            raise HTTPException(status_code=409, detail=msg) from exc
+        if "not yours" in msg or "did not engage" in msg:
+            raise HTTPException(status_code=403, detail=msg) from exc
+        raise HTTPException(status_code=422, detail=msg) from exc
+    db.audit(
+        action="vendor.review.submit",
+        entity_type="vendor_reviews",
+        entity_id=row.get("id"),
+        actor_id=user.id,
+        actor_role=user.role.value,
+        after_state={"vendor_id": payload.vendor_id, "rating": payload.rating},
+    )
+    return row
+
+
+@router.get("/applications/{application_id}/reviews/eligibility")
+def review_eligibility(
+    application_id: str, vendor_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    from app.services import ratings as ratings_svc
+    return ratings_svc.eligibility(user.id, application_id, vendor_id)
+
+
+@router.get("/vendors/{vendor_id}/reviews")
+def vendor_reviews(
+    vendor_id: str, user: CurrentUser = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Public rating summary: average, count, tag histogram, latest reviews."""
+    from app.services import ratings as ratings_svc
+    return ratings_svc.public_summary(vendor_id)
+
+
+@router.get("/vendor/ratings")
+def own_ratings(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """This vendor's own average, count and recent feedback."""
+    from app.services import ratings as ratings_svc
+    vendor = _vendor(user)
+    return ratings_svc.public_summary(vendor["id"], limit=20)
+
+
+@router.get("/discom/vendors/rating-flags")
+def vendor_rating_flags(user: CurrentUser = Depends(require_discom)) -> dict[str, Any]:
+    """Vendors breaching the quality-flag rule, with evidence."""
+    from app.services import ratings as ratings_svc
+    flags = ratings_svc.rating_flags()
+    return {"flags": flags, "count": len(flags)}
+
+
 @router.get("/vendor/summary")
 def vendor_summary(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     return get_vendor_portal().summary(_vendor(user))

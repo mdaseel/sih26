@@ -1,39 +1,31 @@
-# SolarGrid AI — backend runtime (Python 3.12)
+# ============================================================
+#  SolarGrid AI — Python backend dependencies
 #
-# CRITICAL PINS — do not relax without re-running scripts/verify_environment.py
-#
-# suryagrid_model_v2.pkl was serialized by scikit-learn 1.3.2. Loading it under
-# scikit-learn >= 1.4 unpickles successfully but FAILS AT PREDICT TIME with
-#   AttributeError: 'DecisionTreeClassifier' object has no attribute 'monotonic_cst'
-# scikit-learn 1.3.2 requires numpy < 2.0, which in turn caps scipy and pandapower.
-# pandapower 3.4.0 is the newest release that still resolves against numpy 1.26.
-# It reads feeder_network.json (format_version 3.1.0) correctly — verified.
+#  Python 3.12 is required. suryagrid_model_v2.pkl was serialised by
+#  scikit-learn 1.3.2, which requires numpy < 2; pandapower 3.4.0 is
+#  the newest release that resolves against numpy 1.26.x.
+# ============================================================
+
+# --- Web framework ---
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+
+# --- Data validation & settings ---
+pydantic==2.11.4
+pydantic-settings==2.9.1
+
+# --- Supabase / HTTP ---
+supabase==2.15.2
+httpx==0.28.1
+
+# --- Power-flow simulation ---
+pandapower==2.14.11
+networkx==3.4.2
+
+# --- Data / ML ---
+pandas==2.2.3
 numpy==1.26.4
-scipy==1.16.3
-pandas==2.3.3
 scikit-learn==1.3.2
-pandapower==3.4.0
-networkx==3.6.1
 
-# NOTE: xlrd is deliberately NOT here. It is needed only to regenerate the
-# feeder from the original IEEE .xls (build_feeder.py, t8_analysis.py), which
-# the application never does at runtime. To re-run that research pipeline:
-#     pip install xlrd==2.0.1
-
-# Web / API
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.13.4
-pydantic-settings==2.7.1
-
-# Supabase
-supabase==2.11.0
-python-dotenv==1.0.1
-httpx==0.27.2
-
-# Direct Postgres (psycopg v3) — required ONLY by backend/scripts/apply_migrations.py,
-# which connects via SUPABASE_DB_URL. Binary wheel avoids needing libpq build tools.
-psycopg[binary]==3.2.5
-
-# Tests — required by backend/tests/* (pytest) and pytest.ini
-pytest==8.3.4
+# --- Database migrations (scripts only) ---
+psycopg[binary]==3.2.6

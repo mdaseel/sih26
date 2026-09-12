@@ -205,6 +205,7 @@ export const api = {
     request<{
       application: SolarApplication;
       latest_assessment: Record<string, unknown> | null;
+      installation_return?: { notes: string; returned_at: string | null } | null;
     }>(`/api/applications/${id}`),
 
   /**
@@ -260,6 +261,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  /** Houses/locality for one bus — deterministic synthetic offsets, ML untouched. */
+  busHouses: (busId: string) =>
+    request<{
+      pv_bus: string;
+      locality: Record<string, unknown>;
+      bus_position: { latitude: number; longitude: number; distance_km: number };
+      houses: { house_id: string; pv_bus: string; latitude: number; longitude: number }[];
+      path: string[];
+      provisional: boolean;
+    }>(`/api/grid/buses/${busId}/houses`),
+
+  /** All 71 bus localities with house counts. */
+  localities: () =>
+    request<{ buses: Record<string, unknown>[]; count: number }>("/api/grid/localities"),
 };
 
 /** DISCOM routes. Every one of these is refused server-side for a citizen. */
@@ -298,6 +314,17 @@ export const discomApi = {
       { method: "POST", body: JSON.stringify({ notes: notes ?? null }) }
     ),
 
+  /** Return submitted work for correction with a reason. */
+  returnInstallation: (id: string, reason: string) =>
+    request<{ installation: Installation }>(`/api/discom/installations/${id}/return`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  /** Short-lived link to a completion photo, for review. */
+  installationPhotoUrl: (documentId: string) =>
+    request<{ url: string }>(`/api/discom/documents/${documentId}/url`),
+
   /** Every vendor, whatever their status, for the review queue. */
   vendors: () => request<VendorReviewList>("/api/discom/vendors"),
 
@@ -335,6 +362,42 @@ export const vendorApi = {
       method: "POST",
       body: JSON.stringify({ status, installed_capacity_kw: kw ?? null }),
     }),
+  /** Save the completion report draft (equipment, dates, checklist, photos). */
+  saveInstallationReport: (id: string, body: Record<string, unknown>) =>
+    request<Installation>(`/api/vendor/installations/${id}/report`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  /** Validate the COMPLETED report and submit it for DISCOM verification. */
+  submitInstallation: (id: string) =>
+    request<Installation>(`/api/vendor/installations/${id}/submit`, { method: "POST" }),
+  /** Short-lived link to one of this vendor's own documents. */
+  documentUrl: (documentId: string) =>
+    request<{ url: string }>(`/api/vendor/documents/${documentId}/url`),
+
+  /** Upload a site photo/document for the completion report. */
+  uploadInstallationPhoto: async (file: File, documentType: string, notes?: string) => {
+    const { supabase } = await import("@/lib/supabase");
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    const form = new FormData();
+    form.append("document_type", documentType);
+    form.append("file", file);
+    if (notes) form.append("notes", notes);
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/api/vendor/documents/upload`,
+      { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form }
+    );
+    if (!res.ok) {
+      let detail = `Upload failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (typeof body.detail === "string") detail = body.detail;
+      } catch { /* no JSON body */ }
+      throw new ApiError(res.status, detail);
+    }
+    return (await res.json()) as { document: { id: string; file_name: string | null } };
+  },
   projects: () => request<VendorProject[]>("/api/vendor/projects"),
   profile: () => request<VendorProfile>("/api/vendor/profile"),
   updateProfile: (body: Record<string, unknown>) =>

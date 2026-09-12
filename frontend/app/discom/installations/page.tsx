@@ -17,6 +17,8 @@ export default function DiscomInstallations() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string[]>>({});
 
   const load = useCallback(async () => {
     try {
@@ -40,6 +42,35 @@ export default function DiscomInstallations() {
       setError((e as ApiError).message);
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function returnForCorrection(id: string) {
+    if (!reasons[id]?.trim()) {
+      setError("A return reason is required so the vendor knows what to fix.");
+      return;
+    }
+    setBusyId(id);
+    setError(null);
+    try {
+      await discomApi.returnInstallation(id, reasons[id].trim());
+      setReasons((r) => ({ ...r, [id]: "" }));
+      await load();
+    } catch (e) {
+      setError((e as ApiError).message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function showPhotos(row: Installation) {
+    const ids = row.photo_document_ids ?? [];
+    if (photoUrls[row.id]) return;
+    try {
+      const urls = await Promise.all(ids.map((d) => discomApi.installationPhotoUrl(d)));
+      setPhotoUrls((p) => ({ ...p, [row.id]: urls.map((u) => u.url) }));
+    } catch (e) {
+      setError((e as ApiError).message);
     }
   }
 
@@ -81,6 +112,24 @@ export default function DiscomInstallations() {
           {awaiting.map((r) => (
             <div key={r.id} className="card border-amber-900/60">
               <Header row={r} />
+              <Report row={r} />
+              {(r.photo_document_ids?.length ?? 0) > 0 && (
+                <div className="mt-2">
+                  <button onClick={() => showPhotos(r)} className="btn-ghost !py-1 !text-[11px]">
+                    {photoUrls[r.id] ? "Hide site photos" : `Show site photos (${r.photo_document_ids!.length})`}
+                  </button>
+                  {photoUrls[r.id] && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {photoUrls[r.id].map((u) => (
+                        <a key={u} href={u} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={u} alt="Completion site photo" className="h-24 w-32 rounded-lg border border-slate-700 object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <input
                   className="input !w-80 !py-1.5 text-xs"
@@ -94,6 +143,21 @@ export default function DiscomInstallations() {
                   className="btn-primary !py-1.5 !text-xs"
                 >
                   {busyId === r.id ? "Verifying…" : "Mark verified"}
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  className="input !w-80 !py-1.5 text-xs"
+                  placeholder="Return reason (required — vendor sees this)"
+                  value={reasons[r.id] ?? ""}
+                  onChange={(e) => setReasons((n) => ({ ...n, [r.id]: e.target.value }))}
+                />
+                <button
+                  onClick={() => returnForCorrection(r.id)}
+                  disabled={busyId === r.id}
+                  className="btn-ghost !border-red-900 !py-1.5 !text-xs !text-red-300"
+                >
+                  Return for correction
                 </button>
               </div>
             </div>
@@ -157,6 +221,49 @@ function Header({ row }: { row: Installation }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Report({ row }: { row: Installation }) {
+  const approved = row.application ? Number(row.application.new_pv_kw) : null;
+  const installed = row.installed_capacity_kw != null ? Number(row.installed_capacity_kw) : null;
+  const variance =
+    approved != null && installed != null && approved > 0
+      ? Math.abs(installed - approved) / approved
+      : null;
+  const implied =
+    row.panel_count != null && row.panel_watts_each != null
+      ? (row.panel_count * row.panel_watts_each) / 1000
+      : null;
+  const crossWarn =
+    implied != null && installed != null && installed > 0 && Math.abs(implied - installed) / installed > 0.15;
+  const rows: [string, string][] = [
+    ["Installed", installed != null ? `${installed.toFixed(1)} kW (approved ${approved != null ? approved.toFixed(1) : "—"} kW)` : "—"],
+    ["Panels", row.panel_count != null ? `${row.panel_count} × ${row.panel_watts_each ?? "?"} W ${row.panel_make ?? ""} ${row.panel_model ?? ""}`.trim() : "—"],
+    ["Inverter", row.inverter_capacity_kw != null ? `${Number(row.inverter_capacity_kw).toFixed(1)} kW ${row.inverter_make ?? ""} ${row.inverter_model ?? ""}`.trim() : "—"],
+    ["Install date", row.install_date ?? "—"],
+    ["Checklist", row.checklist ? `${Object.values(row.checklist).filter(Boolean).length}/6 ticked` : "—"],
+  ];
+  return (
+    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs">
+      {rows.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between gap-2 border-b border-slate-800/60 py-1 last:border-0">
+          <span className="text-slate-500">{k}</span>
+          <span className="font-mono text-slate-200">{v}</span>
+        </div>
+      ))}
+      {row.completion_notes && <p className="mt-1.5 text-slate-400">“{row.completion_notes}”</p>}
+      {variance != null && variance >= 0.1 && (
+        <p className="mt-1.5 text-amber-300">
+          ⚠️ Installed capacity differs from approved by {(variance * 100).toFixed(0)}% — confirm before verifying.
+        </p>
+      )}
+      {crossWarn && (
+        <p className="mt-1 text-amber-300/80">
+          Panel arithmetic ({implied!.toFixed(1)} kW) differs from reported {installed!.toFixed(1)} kW by over 15% — DC/AC sizing can explain this.
+        </p>
+      )}
     </div>
   );
 }

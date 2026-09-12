@@ -88,6 +88,27 @@ export function TwinDiagram({ twin }: { twin: TwinResponse }) {
           <p className="text-xs text-slate-500">
             Electrical path · substation → transformer → connection point → premises
           </p>
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
+            <span className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-300">Grid · Substation</span>
+            <span className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-300">
+              Transformer · {trafo?.name ?? "—"}
+            </span>
+            <span className="rounded border border-sky-800 bg-sky-950/60 px-2 py-0.5 text-sky-300">
+              Target house · Bus {pvBus}
+            </span>
+            <span className="rounded border border-amber-800 bg-amber-950/50 px-2 py-0.5 text-amber-300">
+              Solar · {elements.energy_balance.solar_generation_kw.toFixed(1)} kW
+            </span>
+            {mode === "after" && elements.energy_balance.local_export_kw > 0.05 ? (
+              <span className="rounded border border-sky-700 bg-sky-950/60 px-2 py-0.5 text-sky-200">
+                Reverse energy · export {elements.energy_balance.local_export_kw.toFixed(1)} kW → grid
+              </span>
+            ) : (
+              <span className="rounded border border-slate-700 bg-slate-900 px-2 py-0.5 text-slate-400">
+                Supply · grid → house
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex rounded-lg border border-slate-700 p-0.5">

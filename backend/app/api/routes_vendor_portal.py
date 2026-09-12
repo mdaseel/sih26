@@ -232,6 +232,109 @@ def update_installation(
     return updated
 
 
+class CompletionReport(BaseModel):
+    installed_capacity_kw: float | None = Field(default=None, ge=0, le=5000)
+    panel_make: str | None = Field(default=None, max_length=100)
+    panel_model: str | None = Field(default=None, max_length=100)
+    panel_count: int | None = Field(default=None, ge=1)
+    panel_watts_each: int | None = Field(default=None, ge=1)
+    inverter_make: str | None = Field(default=None, max_length=100)
+    inverter_model: str | None = Field(default=None, max_length=100)
+    inverter_capacity_kw: float | None = Field(default=None, gt=0, le=5000)
+    install_date: str | None = None
+    completion_notes: str | None = Field(default=None, max_length=2000)
+    checklist: dict[str, bool] | None = None
+    photo_document_ids: list[str] | None = None
+
+
+@router.patch("/vendor/installations/{installation_id}/report")
+def save_completion_report(
+    installation_id: str,
+    payload: CompletionReport,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Save the completion report draft (equipment, dates, checklist, photos).
+
+    Editable while IN_PROGRESS or COMPLETED and unverified. Submitting for
+    verification is a separate, validated step.
+    """
+    portal = get_vendor_portal()
+    try:
+        updated = portal.save_completion_report(
+            _vendor(user), installation_id,
+            {k: v for k, v in payload.model_dump().items() if v is not None},
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.audit(
+        action="vendor.installation.report",
+        entity_type="installations",
+        entity_id=installation_id,
+        actor_id=user.id,
+        actor_role=user.role.value,
+    )
+    return updated
+
+
+@router.post("/vendor/installations/{installation_id}/submit")
+def submit_for_verification(
+    installation_id: str, user: CurrentUser = Depends(get_current_user)
+) -> dict[str, Any]:
+    """Validate the COMPLETED report and submit it for DISCOM verification."""
+    portal = get_vendor_portal()
+    try:
+        updated = portal.submit_for_verification(_vendor(user), installation_id)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.audit(
+        action="vendor.installation.submit",
+        entity_type="installations",
+        entity_id=installation_id,
+        actor_id=user.id,
+        actor_role=user.role.value,
+        after_state={"status": "VERIFICATION_PENDING"},
+    )
+    return updated
+
+
+class ReturnPayload(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/discom/installations/{installation_id}/return")
+def return_installation(
+    installation_id: str,
+    payload: ReturnPayload,
+    user: CurrentUser = Depends(require_discom),
+) -> dict[str, Any]:
+    """Return submitted work for correction with a reason (DISCOM only)."""
+    existing = (
+        db.as_service().table("installations").select("*").eq("id", installation_id).execute()
+    ).data
+    if not existing:
+        raise HTTPException(status_code=404, detail="Installation not found")
+    try:
+        updated = get_vendor_portal().return_for_correction(
+            installation_id, user.id, payload.reason
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    db.audit(
+        action="installation.returned",
+        entity_type="installations",
+        entity_id=installation_id,
+        actor_id=user.id,
+        actor_role=user.role.value,
+        before_state={"status": existing[0]["status"]},
+        after_state={"status": "IN_PROGRESS", "reason": payload.reason},
+    )
+    return {"installation": updated}
+
+
 @router.get("/vendor/opportunities")
 def vendor_opportunities(user: CurrentUser = Depends(get_current_user)) -> list[dict[str, Any]]:
     """Approved applications available to this vendor — per-vendor nearest-first."""
@@ -431,13 +534,16 @@ def add_document(
     vendor = _vendor(user)
 
     allowed = {d["code"] for d in portal.document_types()} if portal.document_types() else set()
-    if allowed and payload.document_type not in allowed:
+    canonical = (payload.document_type or "").strip().upper()
+    if allowed and canonical not in allowed:
         raise HTTPException(
             status_code=422,
             detail=f"document_type must be one of {sorted(allowed)}",
         )
 
-    return portal.add_document(vendor, payload.model_dump())
+    body = payload.model_dump()
+    body["document_type"] = canonical or payload.document_type
+    return portal.add_document(vendor, body)
 
 
 @router.post("/vendor/documents/upload", status_code=201)
@@ -458,8 +564,10 @@ async def upload_document(
     vendor = _vendor(user)
 
     allowed = {d["code"] for d in portal.document_types()}
-    if allowed and document_type not in allowed:
+    canonical = (document_type or "").strip().upper()
+    if allowed and canonical not in allowed:
         raise HTTPException(status_code=422, detail=f"document_type must be one of {sorted(allowed)}")
+    document_type = canonical or document_type
 
     # Read with a hard ceiling so an oversized upload cannot exhaust memory
     # before the size check runs.
@@ -530,6 +638,18 @@ def storage_policy(user: CurrentUser = Depends(get_current_user)) -> dict[str, A
 # ============================================================
 class VerificationPayload(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.get("/discom/documents/{document_id}/url")
+def discom_document_url(document_id: str, user: CurrentUser = Depends(require_discom)) -> dict[str, Any]:
+    """Short-lived link to any vendor document, for verification review."""
+    rows = (
+        db.as_service().table("vendor_documents").select("*").eq("id", document_id).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status_code=404, detail="Document not found")
+    url = get_storage_service().signed_url(rows[0]["file_path"])
+    return {"url": url, "expires_in_seconds": 300}
 
 
 @router.get("/discom/installations")

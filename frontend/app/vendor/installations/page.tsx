@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, vendorApi } from "@/lib/api";
@@ -85,9 +86,9 @@ export default function VendorInstallations() {
             <div key={row.id} className="card">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h3 className="font-mono font-semibold text-slate-100">
-                    {row.application?.application_number ?? row.application_id.slice(0, 8)}
-                  </h3>
+                  <Link href={`/vendor/installations/${row.id}`} className="font-mono font-semibold text-slate-100 hover:text-sky-300">
+                    {row.application?.application_number ?? row.application_id.slice(0, 8)} →
+                  </Link>
                   <p className="mt-0.5 text-xs text-slate-500">
                     {row.application?.applicant_name ?? "Customer"} · Bus{" "}
                     {row.application?.pv_bus ?? "—"} ·{" "}

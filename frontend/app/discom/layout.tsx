@@ -12,8 +12,6 @@ import type { Me } from "@/lib/types";
 const LINKS = [
   { href: "/discom/dashboard", label: "Dashboard" },
   { href: "/discom/applications", label: "Applications" },
-  { href: "/discom/map", label: "Map" },
-  { href: "/discom/grid-twin", label: "Grid twin" },
   { href: "/discom/feeders", label: "Feeders" },
   { href: "/discom/transformers", label: "Transformers" },
   { href: "/discom/hosting-capacity", label: "Hosting capacity" },

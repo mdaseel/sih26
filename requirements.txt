@@ -30,3 +30,10 @@ pydantic-settings==2.7.1
 supabase==2.11.0
 python-dotenv==1.0.1
 httpx==0.27.2
+
+# Direct Postgres (psycopg v3) — required ONLY by backend/scripts/apply_migrations.py,
+# which connects via SUPABASE_DB_URL. Binary wheel avoids needing libpq build tools.
+psycopg[binary]==3.2.5
+
+# Tests — required by backend/tests/* (pytest) and pytest.ini
+pytest==8.3.4

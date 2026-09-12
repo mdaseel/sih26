@@ -203,6 +203,33 @@ def grid_local_topology(bus_id: str) -> dict[str, Any]:
     return view
 
 
+@router.get("/grid/buses/{bus_id}/houses", tags=["grid"])
+def bus_houses(bus_id: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """Houses/locality for one bus: the demo mapping layer.
+
+    Stateless + deterministic: same bus always yields same house_ids
+    ({bus}-A/B[/C]). Electrical screening still uses pv_bus only;
+    this endpoint never predicts and never thresholds (ML untouched).
+    """
+    from app.services.house_mapping import get_house_mapping_service
+
+    try:
+        return get_house_mapping_service().houses_for_bus(bus_id)
+    except UnknownBusError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except IneligibleBusError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/grid/localities", tags=["grid"])
+def grid_localities(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    """All 71 bus localities with house counts + synthetic positions."""
+    from app.services.house_mapping import get_house_mapping_service
+
+    buses = get_house_mapping_service().all_localities()
+    return {"buses": buses, "count": len(buses)}
+
+
 @router.get("/grid/connection-point", tags=["grid"])
 def connection_point(latitude: float, longitude: float) -> dict[str, Any]:
     """The connection point that will screen an address, and its grid data.
@@ -506,6 +533,18 @@ def create_application(
     except IneligibleBusError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # Category-wise rooftop ceiling (Residential 1-10 kW, C&I/Institutional
+    # 1-500 kW). Assessment endpoints stay wide for DISCOM studies; only
+    # filed applications are gated. See services/capacity_limits.py.
+    from app.services.capacity_limits import CategoryCapacityError
+    from app.services.capacity_limits import check_existing_capacity, check_new_capacity
+
+    try:
+        check_new_capacity(payload.connection_type, float(payload.new_pv_kw))
+        check_existing_capacity(payload.connection_type, float(payload.existing_pv_kw or 0.0))
+    except CategoryCapacityError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     row = payload.model_dump(exclude={"submit"})
     row["applicant_id"] = user.id
     # Store what was actually used, not the null that may have arrived.
@@ -554,7 +593,30 @@ def get_application(
     app_row = db.get_application(user.access_token, application_id)
     if app_row is None:
         raise HTTPException(status_code=404, detail="Application not found")
-    return {"application": app_row, "latest_assessment": db.get_latest_assessment(application_id)}
+    # Outstanding DISCOM return, if any: shown to the citizen as a banner until
+    # the vendor resubmits (resubmit clears return_notes). Read through the
+    # service role only after the RLS-gated read above proved ownership.
+    installation_return: dict[str, Any] | None = None
+    try:
+        inst = (
+            db.as_service().table("installations")
+            .select("return_notes,returned_at,status")
+            .eq("application_id", application_id)
+            .limit(1).execute()
+        ).data
+        if inst and inst[0].get("return_notes"):
+            installation_return = {
+                "notes": inst[0]["return_notes"],
+                "returned_at": inst[0].get("returned_at"),
+                "installation_status": inst[0].get("status"),
+            }
+    except Exception:  # noqa: BLE001 - banner is advisory, never fails the read
+        installation_return = None
+    return {
+        "application": app_row,
+        "latest_assessment": db.get_latest_assessment(application_id),
+        "installation_return": installation_return,
+    }
 
 
 def _stored_features(sim: dict[str, Any]) -> dict[str, Any]:

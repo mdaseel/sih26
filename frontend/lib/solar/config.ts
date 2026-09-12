@@ -21,6 +21,34 @@ export const MAX_NEW_PV_KW = 11;
 export const MAX_EXISTING_PV_KW = 10;
 
 /**
+ * Rooftop ceiling by consumer category (national framework; states vary).
+ *
+ * Residential 1-10 kW under PM Surya Ghar (CFA to 3 kW); Commercial /
+ * Institutional / Industrial to sanctioned load with a 500 kW net-metering
+ * cap (2026 framework; some states allow more via DISCOM approval).
+ * Mirrors backend/app/services/capacity_limits.py — the backend enforces.
+ */
+export const CATEGORY_LIMITS: Record<string, { min: number; max: number; note: string }> = {
+  Residential: { min: 1, max: 10, note: "PM Surya Ghar rooftop · CFA to 3 kW" },
+  Commercial: { min: 1, max: 500, note: "To sanctioned load · net metering to 500 kW" },
+  Institutional: { min: 1, max: 500, note: "As commercial rooftop · state schemes vary" },
+  Industrial: { min: 1, max: 500, note: "Above 500 kW needs DISCOM/state approval" },
+};
+
+export function limitsForCategory(connectionType: string | null | undefined): {
+  min: number;
+  max: number;
+  note: string;
+} {
+  if (connectionType && CATEGORY_LIMITS[connectionType]) return CATEGORY_LIMITS[connectionType];
+  return CATEGORY_LIMITS.Residential;
+}
+
+export function maxNewPvKwFor(connectionType: string | null | undefined): number {
+  return limitsForCategory(connectionType).max;
+}
+
+/**
  * Default module rating used to turn a capacity into a panel count.
  *
  * Configurable because module ratings move with the market — a 2020 roof is

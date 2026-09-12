@@ -1,11 +1,27 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 
 import { RiskBadge } from "@/components/RiskBadge";
 import { TwinDiagram } from "@/components/TwinDiagram";
 import { api, ApiError } from "@/lib/api";
 import type { Bus, TwinResponse } from "@/lib/types";
+
+const GridTwin3D = dynamic(
+  () => import("@/components/GridTwin3D").then((m) => m.GridTwin3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[480px] items-center justify-center rounded-xl border border-slate-800 bg-slate-950">
+        <div className="flex flex-col items-center gap-2">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-sky-400 border-t-transparent" />
+          <span className="text-sm text-slate-400">Loading 3D grid twin…</span>
+        </div>
+      </div>
+    ),
+  }
+);
 
 export default function DiscomGridTwin() {
   const [buses, setBuses] = useState<Bus[] | null>(null);
@@ -15,6 +31,11 @@ export default function DiscomGridTwin() {
   const [twin, setTwin] = useState<TwinResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"2d" | "3d">("2d");
+  const [houses, setHouses] = useState<
+    { house_id: string; pv_bus: string; latitude: number; longitude: number }[]
+  >([]);
+  const [busPos, setBusPos] = useState<{ latitude: number; longitude: number } | null>(null);
 
   useEffect(() => {
     api.buses().then(setBuses).catch((e: ApiError) => setError(e.message));
@@ -39,6 +60,21 @@ export default function DiscomGridTwin() {
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Houses/locality for the selected bus — deterministic synthetic offsets.
+  // Electrical screening still uses pv_bus only; this never touches ML.
+  useEffect(() => {
+    api
+      .busHouses(busId)
+      .then((h) => {
+        setHouses(h.houses);
+        setBusPos(h.bus_position);
+      })
+      .catch(() => {
+        setHouses([]);
+        setBusPos(null);
+      });
+  }, [busId]);
 
   return (
     <div className="space-y-6">
@@ -107,7 +143,41 @@ export default function DiscomGridTwin() {
         </div>
       </div>
 
-      {twin && <TwinDiagram twin={twin} />}
+      {twin && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-slate-700 p-0.5">
+              {(["2d", "3d"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setView(m)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    view === m ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {m === "2d" ? "2D schematic" : "3D grid twin"}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-slate-500">
+              {houses.length > 0
+                ? `${houses.length} houses (${houses.map((h) => h.house_id).join(", ")}) · click a bus, see its houses`
+                : busPos
+                  ? "Bus located — houses unavailable"
+                  : "Bus has no synthetic position yet"}
+            </span>
+          </div>
+          {view === "2d" ? (
+            <TwinDiagram twin={twin} />
+          ) : busPos ? (
+            <GridTwin3D twin={twin} houses={houses} busPosition={busPos} />
+          ) : (
+            <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-200">
+              3D needs a synthetic bus position — run precompute_grid_map first.
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

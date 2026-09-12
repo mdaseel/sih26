@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -8,6 +9,18 @@ import { ProbabilityBar, RiskBadge } from "@/components/RiskBadge";
 import { TwinDiagram } from "@/components/TwinDiagram";
 import { api, ApiError, discomApi } from "@/lib/api";
 import type { DiscomApplicationDetail, TwinResponse } from "@/lib/types";
+
+const GridTwin3D = dynamic(
+  () => import("@/components/GridTwin3D").then((m) => m.GridTwin3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[480px] items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-sm text-slate-500">
+        Loading 3D grid twin…
+      </div>
+    ),
+  }
+);
 
 /**
  * DISCOM review console for one application.
@@ -21,6 +34,11 @@ export default function DiscomApplicationReview() {
 
   const [detail, setDetail] = useState<DiscomApplicationDetail | null>(null);
   const [twin, setTwin] = useState<TwinResponse | null>(null);
+  const [view, setView] = useState<"2d" | "3d">("2d");
+  const [houses, setHouses] = useState<
+    { house_id: string; pv_bus: string; latitude: number; longitude: number }[]
+  >([]);
+  const [busPos, setBusPos] = useState<{ latitude: number; longitude: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +57,16 @@ export default function DiscomApplicationReview() {
         })
         .then(setTwin)
         .catch(() => setTwin(null));
+      api
+        .busHouses(d.application.pv_bus)
+        .then((h) => {
+          setHouses(h.houses);
+          setBusPos(h.bus_position);
+        })
+        .catch(() => {
+          setHouses([]);
+          setBusPos(null);
+        });
     } catch (e) {
       setError((e as ApiError).message);
     }
@@ -138,8 +166,47 @@ export default function DiscomApplicationReview() {
         </div>
       </div>
 
-      {/* ---- 2D grid impact ---- */}
-      {twin && <TwinDiagram twin={twin} />}
+      {/* ---- grid impact: 2D schematic | 3D grid twin (same TwinResponse) ---- */}
+      {twin && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border border-slate-700 p-0.5">
+              {(["2d", "3d"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setView(m)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                    view === m ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {m === "2d" ? "2D schematic" : "3D grid twin"}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs text-slate-500">
+              {houses.length > 0
+                ? `Bus ${detail?.application.pv_bus} → ${houses.map((h) => h.house_id).join(", ")}`
+                : "Houses unavailable for this bus"}
+            </span>
+          </div>
+          {view === "2d" ? (
+            <TwinDiagram twin={twin} />
+          ) : busPos || (detail?.application.latitude != null && detail?.application.longitude != null) ? (
+            <GridTwin3D
+              twin={twin}
+              houses={houses}
+              busPosition={busPos}
+              siteLatitude={detail?.application.latitude}
+              siteLongitude={detail?.application.longitude}
+              siteLabel={houses[0]?.house_id ?? detail?.application.application_number ?? null}
+            />
+          ) : (
+            <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-200">
+              3D needs a synthetic bus position — run precompute_grid_map first.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ---- ML vs engineering ---- */}
       {assessment && (

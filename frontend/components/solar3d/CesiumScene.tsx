@@ -173,6 +173,13 @@ export function CesiumScene({
   const sunRayEntities = useRef<any[]>([]);
   /** Height of the site's own building, metres above ground, from the data. */
   const siteRoofHeight = useRef<number | null>(null);
+  /**
+   * Roof height picked by clicking a building: exact lat/lon/height of the
+   * rendered 3D surface (tiles, models, extrusions). Honoured by the next
+   * surface measurement when it matches the current coordinates, so the array
+   * lands on the clicked roof instead of inside the block or on the ground.
+   */
+  const clickedSurface = useRef<{ latitude: number; longitude: number; height: number } | null>(null);
 
   // A monotonic generation counter, not a boolean.
   //
@@ -423,6 +430,17 @@ export function CesiumScene({
 
     const ground = terrainHeight.current ?? 0;
 
+    // Solid concrete tones + dark roof caps so footprints read as buildings.
+    // Real Ion OSM 3D Tiles (loaded at viewer creation when the token allows)
+    // carry the photorealistic massing; these extrusions use the mapped
+    // outline with the mapped height/levels, or a labelled estimate.
+    const TONES = ["#8d8fa3", "#9aa0b4", "#7e8496", "#a8adbf"];
+    const toneFor = (id: string) => {
+      let h = 0;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+      return TONES[h % TONES.length];
+    };
+
     for (const building of siteBuildings) {
       const ring = building.footprint;
       if (!ring || ring.length < 4) continue;
@@ -441,21 +459,61 @@ export function CesiumScene({
             hierarchy: new Cesium.PolygonHierarchy(positions),
             height: ground,
             extrudedHeight: ground + building.height_m,
-            // The site reads warm and solid; its neighbours recede. An assumed
-            // height is drawn more transparently, so a block whose height nobody
-            // mapped does not look as certain as one that was measured.
+            // The site reads sky-tinted and solid; neighbours get varied
+            // concrete tones. An assumed height keeps full opacity (it must
+            // occlude like a building) but is labelled estimated below.
             material: isSite
-              ? Cesium.Color.fromCssColorString("#38bdf8").withAlpha(0.55)
-              : Cesium.Color.fromCssColorString("#334155").withAlpha(assumed ? 0.5 : 0.75),
+              ? Cesium.Color.fromCssColorString("#5b8fd4").withAlpha(0.95)
+              : Cesium.Color.fromCssColorString(toneFor(building.osm_id)).withAlpha(0.92),
             outline: true,
             outlineColor: isSite
               ? Cesium.Color.fromCssColorString("#e0f2fe")
-              : Cesium.Color.fromCssColorString("#64748b").withAlpha(0.9),
+              : Cesium.Color.fromCssColorString("#2b3446"),
             outlineWidth: isSite ? 2 : 1,
             shadows: Cesium.ShadowMode.ENABLED,
           },
         })
       );
+
+      // Roof cap: thin dark slab + bright parapet so the top reads as a roof.
+      buildingEntities.current.push(
+        v.entities.add({
+          name: `Roof ${building.osm_id}`,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(positions),
+            height: ground + building.height_m,
+            extrudedHeight: ground + building.height_m + 0.5,
+            material: Cesium.Color.fromCssColorString(isSite ? "#5b8fd4" : "#4a5265").withAlpha(0.98),
+            outline: true,
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.85),
+            outlineWidth: 1,
+            shadows: Cesium.ShadowMode.ENABLED,
+          },
+        })
+      );
+
+      // Estimated height gets a floating tag, not silent confidence.
+      if (assumed) {
+        const c = ring.reduce(
+          ([sx, sy], [lo, la]: [number, number]) => [sx + lo / ring.length, sy + la / ring.length],
+          [0, 0]
+        );
+        buildingEntities.current.push(
+          v.entities.add({
+            name: `Estimated height ${building.osm_id}`,
+            position: Cesium.Cartesian3.fromDegrees(c[0], c[1], ground + building.height_m + 2),
+            label: {
+              text: `est. ${building.height_m.toFixed(0)} m`,
+              font: "10px sans-serif",
+              fillColor: Cesium.Color.fromCssColorString("#fcd34d"),
+              outlineColor: Cesium.Color.fromCssColorString("#0f172a"),
+              outlineWidth: 2,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          })
+        );
+      }
 
       if (isSite) siteRoofHeight.current = building.height_m;
     }
@@ -599,17 +657,44 @@ export function CesiumScene({
         },
       });
 
-      // Roof height comes from the footprint data, not a depth-buffer sample.
-      //
-      // The old approach asked the renderer what was under the array, which
-      // meant waiting on tiles, forcing frames, and discarding nonsense values
-      // when the read came back half-written. The footprint already carries a
-      // height, and it says where that height came from — so the answer is
-      // both simpler and more honest about its own provenance.
+      // Roof height, best source first:
+      //   1. the clicked 3D surface (a roof the user chose — exact height),
+      //   2. scene.sampleHeight (3D Tiles / models aware, no footprint needed),
+      //   3. the mapped footprint height above terrain,
+      //   4. terrain itself.
+      // Whatever wins, the array base sits ON the roof, never inside the block.
+      let roofTopM: number | null = null;
+      let roofSource: "picked" | "tiles" | "footprint" | null = null;
+      const click = clickedSurface.current;
+      if (
+        click &&
+        Math.abs(click.latitude - latitude) < 0.00015 &&
+        Math.abs(click.longitude - longitude) < 0.00015 &&
+        Number.isFinite(click.height)
+      ) {
+        roofTopM = click.height;
+        roofSource = "picked";
+      }
+      if (roofTopM == null) {
+        try {
+          const h = flying.scene.sampleHeight(
+            Cesium.Cartographic.fromDegrees(longitude, latitude)
+          );
+          if (Number.isFinite(h) && terrainHeightM != null && h > terrainHeightM + 1.5) {
+            roofTopM = h;
+            roofSource = "tiles";
+          }
+        } catch { /* scene not ready for sampling — fall through */ }
+      }
       const roofM = siteRoofHeight.current;
-      const onBuilding = roofM != null && roofM >= BUILDING_THRESHOLD_M;
-      const surfaceHeightM =
-        terrainHeightM != null && roofM != null ? terrainHeightM + roofM : terrainHeightM;
+      if (roofTopM == null && roofM != null && terrainHeightM != null) {
+        roofTopM = terrainHeightM + roofM;
+        roofSource = "footprint";
+      }
+      const onBuilding =
+        roofTopM != null &&
+        (roofSource !== null || (roofM != null && roofM >= BUILDING_THRESHOLD_M));
+      const surfaceHeightM = roofTopM ?? terrainHeightM;
 
       surfaceHeight.current = surfaceHeightM ?? terrainHeightM ?? 0;
       // The array is built on this height, so rebuild it now that we know it.
@@ -619,7 +704,8 @@ export function CesiumScene({
         surfaceHeightM,
         buildingDataAvailable: onBuilding,
         onBuilding,
-        buildingHeightM: roofM,
+        buildingHeightM:
+          roofTopM != null && terrainHeightM != null ? roofTopM - terrainHeightM : roofM,
       });
       onStatus("ready");
     })();
@@ -936,8 +1022,28 @@ ${skyLabel(cloudCoverPct)} · ${Math.round(cloudCoverPct)}% cloud`
         }
       }
 
-      // Pick real-world 3D location on satellite surface
+      // Pick the real 3D surface: 3D Tiles / models / extrusions first so a
+      // click on a roof returns the roof (with its height), falling back to
+      // the terrain globe. The measured height travels with the coordinates
+      // so the array is rebuilt on top of the clicked building, never inside
+      // it.
       if (onLocationChange) {
+        let picked: any = null;
+        try {
+          if (v.scene.pickPositionSupported) picked = v.scene.pickPosition(movement.position);
+        } catch { picked = null; }
+        if (picked && Number.isFinite(picked.x)) {
+          try {
+            const carto = Cesium.Cartographic.fromCartesian(picked);
+            const clickedLat = Cesium.Math.toDegrees(carto.latitude);
+            const clickedLon = Cesium.Math.toDegrees(carto.longitude);
+            if (Number.isFinite(clickedLat) && Number.isFinite(clickedLon) && Number.isFinite(carto.height)) {
+              clickedSurface.current = { latitude: clickedLat, longitude: clickedLon, height: carto.height };
+              onLocationChange(clickedLat, clickedLon);
+              return;
+            }
+          } catch { /* fall through to globe pick */ }
+        }
         const ray = v.camera.getPickRay(movement.position);
         if (ray) {
           const cartesian = v.scene.globe.pick(ray, v.scene);
@@ -946,6 +1052,7 @@ ${skyLabel(cloudCoverPct)} · ${Math.round(cloudCoverPct)}% cloud`
             const clickedLat = Cesium.Math.toDegrees(carto.latitude);
             const clickedLon = Cesium.Math.toDegrees(carto.longitude);
             if (Number.isFinite(clickedLat) && Number.isFinite(clickedLon)) {
+              clickedSurface.current = null;
               onLocationChange(clickedLat, clickedLon);
             }
           }

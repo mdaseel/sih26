@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import type { ConnectionPoint } from "@/lib/types";
+import { limitsForCategory, maxNewPvKwFor } from "@/lib/solar/config";
 import { SolarPlanner, type SolarPlacement } from "@/components/solar3d/SolarPlanner";
 
 /**
@@ -427,12 +428,19 @@ export default function NewApplicationPage() {
                 id="new_pv_kw"
                 required
                 type="number"
-                min="0.1"
+                min={limitsForCategory(form.connection_type).min}
+                max={limitsForCategory(form.connection_type).max}
                 step="0.1"
                 className="input"
                 value={form.new_pv_kw}
                 onChange={(e) => set("new_pv_kw", e.target.value)}
               />
+              <p className="mt-1 text-xs text-slate-600">
+                {form.connection_type || "Residential"} rooftop:{" "}
+                {limitsForCategory(form.connection_type).min}–
+                {limitsForCategory(form.connection_type).max} kW ·{" "}
+                {limitsForCategory(form.connection_type).note}
+              </p>
             </div>
           </div>
 
@@ -553,6 +561,7 @@ export default function NewApplicationPage() {
                 <option>Residential</option>
                 <option>Commercial</option>
                 <option>Institutional</option>
+                <option>Industrial</option>
               </select>
             </div>
             <div>
@@ -638,6 +647,7 @@ export default function NewApplicationPage() {
             initialCapacityKw={Number(form.new_pv_kw) || 5}
             pvBus={connectionPoint?.pv_bus ?? "734"}
             roofAreaSqm={Number(form.roof_area_sqm) || null}
+            maxCapacityKw={maxNewPvKwFor(form.connection_type)}
             onCapacityChange={(kw) => set("new_pv_kw", kw.toFixed(1))}
             onUsePlacement={(placement) => {
               setSolarPlacement(placement);

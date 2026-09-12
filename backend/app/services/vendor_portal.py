@@ -40,6 +40,35 @@ VENDOR_ALLOWED_STATUSES = {
 # Set by the DISCOM, never by the vendor.
 DISCOM_ONLY_STATUS = InstallationStatus.VERIFIED
 
+# Vendor progress is sequential: each status may only follow its predecessor.
+# (VERIFIED leaves vendor hands entirely — see verify_installation.)
+STATUS_ORDER = [
+    InstallationStatus.PENDING,
+    InstallationStatus.SITE_VISIT,
+    InstallationStatus.SCHEDULED,
+    InstallationStatus.IN_PROGRESS,
+    InstallationStatus.COMPLETED,
+    InstallationStatus.VERIFICATION_PENDING,
+]
+
+# The six commissioning checks, all true before submit.
+CHECKLIST_KEYS = (
+    "modules_torqued",
+    "wiring_mcb",
+    "earthing",
+    "net_meter_paperwork",
+    "generation_test",
+    "customer_demo",
+)
+
+# Panel-count × wattage must approximate installed kW within this band.
+# Warning only (DC/AC sizing differences are legitimate) — surfaced to the
+# DISCOM as a variance flag, never a rejection.
+PANEL_CROSSCHECK_TOLERANCE = 0.15
+
+# Minimum site photos: rooftop/panels + meter/electrical.
+MIN_COMPLETION_PHOTOS = 2
+
 # Only these fields of an application are released to an engaged vendor.
 CUSTOMER_FIELDS_FOR_VENDOR = (
     "id,application_number,applicant_name,contact_phone,address_line,district,state,"
@@ -257,6 +286,19 @@ class VendorPortalService:
 
         own = self._own(vendor, "installations", installation_id)
 
+        # Sequential progress: no skipping SITE_VISIT → VERIFICATION_PENDING.
+        try:
+            cur = InstallationStatus(str(own.get("status") or "PENDING"))
+            cur_i = STATUS_ORDER.index(cur)
+            new_i = STATUS_ORDER.index(status)
+        except ValueError:
+            cur_i, new_i = 0, 0
+        if new_i > cur_i + 1:
+            raise ValueError(
+                f"Installations advance one step at a time: {own.get('status')} "
+                f"cannot jump straight to {status.value}."
+            )
+
         update: dict[str, Any] = {"status": status.value}
         if installed_capacity_kw is not None:
             update["installed_capacity_kw"] = installed_capacity_kw
@@ -287,6 +329,158 @@ class VendorPortalService:
                 db.as_service().table("solar_applications").update(
                     {"status": mapped}
                 ).eq("id", own["application_id"]).execute()
+        except Exception:
+            pass
+        return data
+
+    # ---------------- completion report ----------------
+
+    REPORT_FIELDS = (
+        "installed_capacity_kw",
+        "panel_make", "panel_model", "panel_count", "panel_watts_each",
+        "inverter_make", "inverter_model", "inverter_capacity_kw",
+        "install_date", "completion_notes", "checklist", "photo_document_ids",
+    )
+
+    def save_completion_report(
+        self, vendor: dict[str, Any], installation_id: str, report: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Save the vendor's completion report (draft until submitted).
+
+        Allowed while the installation is IN_PROGRESS or COMPLETED and not
+        verified. Unknown keys are ignored so the form can evolve freely.
+        """
+        own = self._own(vendor, "installations", installation_id)
+        if bool(own.get("discom_verified")) or str(own.get("status")) == DISCOM_ONLY_STATUS.value:
+            raise PermissionError("A verified installation can no longer be edited.")
+        if str(own.get("status")) not in (
+            InstallationStatus.IN_PROGRESS.value, InstallationStatus.COMPLETED.value
+        ):
+            raise ValueError(
+                "The completion report opens once work starts (IN_PROGRESS)."
+            )
+
+        update = {k: report[k] for k in self.REPORT_FIELDS if k in report}
+        if "checklist" in update and not isinstance(update["checklist"], dict):
+            raise ValueError("checklist must be an object of {item: boolean}")
+        if "photo_document_ids" in update and not isinstance(update["photo_document_ids"], list):
+            raise ValueError("photo_document_ids must be a list of document ids")
+        if not update:
+            raise ValueError("Nothing to save")
+        # Returning clears the previous return: a fresh report answers it.
+        update["return_notes"] = None
+        update["returned_at"] = None
+
+        res = (
+            db.as_service().table("installations").update(update)
+            .eq("id", installation_id).execute()
+        )
+        return res.data[0] if res.data else {}
+
+    def report_warnings(self, installation: dict[str, Any]) -> list[str]:
+        """Advisory flags for the DISCOM reviewer. Never rejections."""
+        warnings: list[str] = []
+        try:
+            count = installation.get("panel_count")
+            watts = installation.get("panel_watts_each")
+            kw = installation.get("installed_capacity_kw")
+            if count and watts and kw:
+                implied = float(count) * float(watts) / 1000.0
+                if abs(implied - float(kw)) / max(float(kw), 1e-6) > PANEL_CROSSCHECK_TOLERANCE:
+                    warnings.append(
+                        f"Panel arithmetic ({count} × {watts} W = {implied:.1f} kW) "
+                        f"differs from reported {float(kw):.1f} kW by over "
+                        f"{int(PANEL_CROSSCHECK_TOLERANCE * 100)}% — DC/AC sizing can explain this."
+                    )
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+        return warnings
+
+    def submit_for_verification(
+        self, vendor: dict[str, Any], installation_id: str
+    ) -> dict[str, Any]:
+        """Validate a COMPLETED report and submit it for DISCOM verification.
+
+        Requires: installed kW set, all six checklist items true, ≥2 photos,
+        equipment + install date present, inverter ≥ installed kW. Undersized
+        inverters and missing items block submit; the panel cross-check only
+        warns (surfaced via report_warnings to the reviewer).
+        """
+        own = self._own(vendor, "installations", installation_id)
+        if bool(own.get("discom_verified")):
+            raise PermissionError("A verified installation can no longer be edited.")
+        if str(own.get("status")) != InstallationStatus.COMPLETED.value:
+            raise ValueError("Only a COMPLETED installation can be submitted for verification.")
+
+        missing = [
+            k for k in (
+                "installed_capacity_kw", "panel_make", "panel_model", "panel_count",
+                "panel_watts_each", "inverter_make", "inverter_model",
+                "inverter_capacity_kw", "install_date",
+            ) if own.get(k) in (None, "")
+        ]
+        if missing:
+            raise ValueError(f"Completion report is missing: {', '.join(missing)}.")
+        checklist = own.get("checklist") or {}
+        unticked = [k for k in CHECKLIST_KEYS if checklist.get(k) is not True]
+        if unticked:
+            raise ValueError(f"Commissioning checklist incomplete: {', '.join(unticked)}.")
+        photos = own.get("photo_document_ids") or []
+        if len(photos) < MIN_COMPLETION_PHOTOS:
+            raise ValueError(
+                f"At least {MIN_COMPLETION_PHOTOS} site photos are required "
+                "(rooftop/panels + meter/electrical)."
+            )
+        try:
+            inverter_kw = float(own["inverter_capacity_kw"])
+            installed_kw = float(own["installed_capacity_kw"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Capacities must be numbers.") from exc
+        if inverter_kw < installed_kw:
+            raise ValueError(
+                "Inverter capacity is below installed capacity — an undersized "
+                "inverter cannot be submitted."
+            )
+
+        res = (
+            db.as_service().table("installations")
+            .update({
+                "status": InstallationStatus.VERIFICATION_PENDING.value,
+                "return_notes": None, "returned_at": None,
+            })
+            .eq("id", installation_id).execute()
+        )
+        data = res.data[0] if res.data else {}
+        try:
+            db.as_service().table("solar_applications").update(
+                {"status": "INSTALLED"}
+            ).eq("id", own["application_id"]).execute()
+        except Exception:
+            pass
+        return data
+
+    @staticmethod
+    def return_for_correction(
+        installation_id: str, verifier_id: str, reason: str | None
+    ) -> dict[str, Any]:
+        """Send submitted work back (DISCOM only). Reason is required."""
+        if not (reason or "").strip():
+            raise ValueError("A return reason is required so the vendor knows what to fix.")
+        res = (
+            db.as_service().table("installations")
+            .update({
+                "status": InstallationStatus.IN_PROGRESS.value,
+                "return_notes": reason.strip(),
+                "returned_at": "now()",
+            })
+            .eq("id", installation_id).execute()
+        )
+        data = res.data[0] if res.data else {}
+        try:
+            if data.get("application_id"):
+                db.as_service().table("solar_applications").update(
+                    {"status": "INSTALLING"}
+                ).eq("id", data["application_id"]).execute()
         except Exception:
             pass
         return data

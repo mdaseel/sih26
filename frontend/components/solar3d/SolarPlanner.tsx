@@ -109,6 +109,7 @@ export function SolarPlanner({
   onCapacityChange,
   onUsePlacement,
   panelSpec = DEFAULT_PANEL_SPEC,
+  maxCapacityKw = MAX_NEW_PV_KW,
 }: {
   latitude: number;
   longitude: number;
@@ -119,6 +120,8 @@ export function SolarPlanner({
   onCapacityChange?: (kw: number) => void;
   onUsePlacement?: (placement: SolarPlacement) => void;
   panelSpec?: PanelSpec;
+  /** Category ceiling (Residential 10 kW, C&I 500 kW). Caps fit-to-roof. */
+  maxCapacityKw?: number;
 }) {
   const [latitude, setLatitude] = useState(initialLat);
   const [longitude, setLongitude] = useState(initialLon);
@@ -213,8 +216,8 @@ export function SolarPlanner({
    * capacity that the array being drawn would not fit.
    */
   const fitCapacityKw = useMemo(
-    () => capacityToFillRoof(roofAreaSqm, panelSpec, tiltDeg, rowSpacingM, MAX_NEW_PV_KW),
-    [roofAreaSqm, panelSpec, tiltDeg, rowSpacingM]
+    () => capacityToFillRoof(roofAreaSqm, panelSpec, tiltDeg, rowSpacingM, maxCapacityKw),
+    [roofAreaSqm, panelSpec, tiltDeg, rowSpacingM, maxCapacityKw]
   );
 
   const fitsExactly =
@@ -269,12 +272,6 @@ export function SolarPlanner({
     () => clearSkyIrradianceEstimate(sun, tiltDeg, azimuthDeg),
     [sun, tiltDeg, azimuthDeg]
   );
-
-  // Solar generation calculations
-  const annualGenKwh = Math.round(capacityKw * 1425 * (sun.elevation > 0 ? 1 : 0.95));
-  const yearlySunlightKwh = 1468;
-  const performanceRatioPct = 82;
-  const co2OffsetTonnes = (capacityKw * 1.12).toFixed(1);
 
   // Shade breakdown estimates
   const directSunlightPct = Math.max(0, Math.round(100 - (shading?.shadedFraction ?? 0.05) * 100 - 4));
@@ -337,86 +334,10 @@ export function SolarPlanner({
 
   return (
     <div className="space-y-6">
-      {/* Main 3-Column Layout */}
+      {/* Main 2-Column Layout: 3D view + analysis */}
       <div className="grid gap-5 lg:grid-cols-12">
-        {/* Left Column: Input Panel & Solar Insights */}
-        <div className="space-y-4 lg:col-span-3">
-          {/* ---- what this application already says ---- */}
-          {/*
-            Read-only on purpose. The location, the capacity and the roof type
-            are fields on the application form a few centimetres up the page;
-            asking for them again here gave two inputs for one fact and no rule
-            about which won. The planner reflects the application, and the
-            application is edited in one place.
-          */}
-          <div className="card space-y-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              This application
-            </h3>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-500">Location</span>
-                <span className="font-mono text-slate-300">
-                  {latitude.toFixed(5)}, {longitude.toFixed(5)}
-                </span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-500">System size</span>
-                <span className="font-mono text-sky-400">{capacityKw.toFixed(1)} kW</span>
-              </div>
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-500">Connection point</span>
-                <span className="font-mono text-slate-300">Bus {pvBus}</span>
-              </div>
-              {roofAreaSqm != null && (
-                <div className="flex justify-between gap-2">
-                  <span className="text-slate-500">Roof area</span>
-                  <span className="font-mono text-slate-300">{roofAreaSqm} m²</span>
-                </div>
-              )}
-            </div>
-
-            <p className="text-[11px] leading-relaxed text-slate-600">
-              Change any of these on the form above and the 3D view follows.
-            </p>
-          </div>
-
-
-          {/* Solar Insights Card */}
-          <div className="card space-y-3 border-sky-900/40 bg-slate-900/60">
-            <h3 className="text-sm font-semibold uppercase tracking-wider text-sky-300">
-              Solar Insights
-            </h3>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="metric-label">Annual Generation</div>
-                <div className="font-mono text-sm text-slate-100">{annualGenKwh.toLocaleString()} kWh</div>
-              </div>
-              <div>
-                <div className="metric-label">Sunlight (Yearly)</div>
-                <div className="font-mono text-sm text-slate-100">{yearlySunlightKwh} kWh/m²</div>
-              </div>
-              <div>
-                <div className="metric-label">Performance Ratio</div>
-                <div className="font-mono text-sm text-slate-100">{performanceRatioPct}%</div>
-              </div>
-              <div>
-                <div className="metric-label">CO₂ Offset (Yearly)</div>
-                <div className="font-mono text-sm text-emerald-400">{co2OffsetTonnes} Tonnes</div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-emerald-800/80 bg-emerald-950/40 p-2.5 text-xs text-emerald-300">
-              <div className="font-semibold">🟢 Excellent for Solar!</div>
-              <p className="mt-0.5 text-[11px] text-emerald-400/80">High generation potential detected for this rooftop.</p>
-            </div>
-          </div>
-        </div>
-
         {/* Center Column: 3D Cesium Globe View */}
-        <div className="space-y-3 lg:col-span-6">
+        <div className="space-y-3 lg:col-span-9">
           {/* Top Checkboxes Overlay */}
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/90 px-4 py-2.5 text-xs text-slate-300 shadow">
             <div className="flex flex-wrap items-center gap-4">
@@ -758,9 +679,9 @@ export function SolarPlanner({
               >
                 {fitsExactly ? "Already filling the roof" : "Scale to fill roof"}
               </button>
-              {fitCapacityKw != null && fitCapacityKw >= MAX_NEW_PV_KW && (
+              {fitCapacityKw != null && fitCapacityKw >= maxCapacityKw && (
                 <p className="mt-1.5 text-[11px] text-amber-400">
-                  Capped at the {MAX_NEW_PV_KW} kW residential limit — the roof
+                  Capped at the {maxCapacityKw} kW category limit — the roof
                   itself would take more.
                 </p>
               )}

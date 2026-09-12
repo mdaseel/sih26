@@ -64,13 +64,15 @@ export default function ApplicationDetailPage() {
   const [app, setApp] = useState<SolarApplication | null>(null);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [twin, setTwin] = useState<TwinResponse | null>(null);
+  const [installReturn, setInstallReturn] = useState<{ notes: string; returned_at: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const { application } = await api.getApplication(id);
-      setApp(application);
+      const res = await api.getApplication(id);
+      setApp(res.application);
+      setInstallReturn(res.installation_return ?? null);
     } catch (e) {
       setError((e as ApiError).message);
     }
@@ -191,6 +193,13 @@ export default function ApplicationDetailPage() {
       {error && (
         <p className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-sm text-red-300">
           {error}
+        </p>
+      )}
+
+      {installReturn && (
+        <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-sm text-amber-200">
+          ⚠️ Installation returned by DISCOM for correction: {installReturn.notes} —
+          your installer has been asked to fix this and resubmit.
         </p>
       )}
 

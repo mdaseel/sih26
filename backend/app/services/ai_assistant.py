@@ -52,6 +52,24 @@ async def _list_my_applications_count(user) -> int | None:
     except Exception:
         return None
 
+def _format_applications(apps: list[dict]) -> str:
+    """ChatGPT-style bulletin for applications."""
+    if not apps:
+        return "No applications found."
+    lines = [f"### Your Applications — {len(apps)} total", ""]
+    for a in apps:
+        app_no = a.get("application_number", "—")
+        status = a.get("status", "—")
+        bus = a.get("pv_bus", "—")
+        kw = a.get("new_pv_kw", "—")
+        # Try to get assessment if available
+        badge = {"SAFE": "🟢 SAFE", "CAUTION": "🟡 CAUTION", "CONSTRAINED": "🔴 CONSTRAINED"}.get(str(status), status)
+        lines.append(f"- **{app_no}** — **{badge}** · Bus **{bus}** · **{kw} kW** · Status: `{status}`")
+    lines.append("")
+    lines.append("> Tip: Ask `Tell me about SG-XXXX` for full details (bus, solar, constraint, next steps) or `Show Bus 734 on 3D twin` to fly there.")
+    return "\n".join(lines)
+
+
 def rule_based_fallback(message: str, context: dict[str, Any] | None = None) -> str | None:
     """Fast path for common questions — no LLM needed, never times out."""
     import re
@@ -73,7 +91,8 @@ def rule_based_fallback(message: str, context: dict[str, Any] | None = None) -> 
     if "how many application" in q or "how many applications" in q or ("how many" in q and "applied" in q):
         # This needs live count — caller will handle via tool, but provide instant template if no user
         return None  # let tool path handle it with real count
-    if any(kw in q for kw in ["how the application classifies", "how application classifies", "safe or caution or constrained", "safe / caution / constrained", "how does solargrid classify", "classification into safe"]):
+    if any(kw in q for kw in ["classifies", "classification"]) and any(k in q for k in ["safe", "caution", "constrained"]):
+        # matches: how the software classifies each application as safe, caution, constrained? etc.
         return (
             "**How SolarGrid classifies SAFE / CAUTION / CONSTRAINED:**\n"
             "1) **ML pre-screen** (Random Forest, 18 features: bus, kW, transformer, feeder, distance, load) → predicts SAFE/CAUTION/CONSTRAINED in ms.\n"
@@ -82,12 +101,29 @@ def rule_based_fallback(message: str, context: dict[str, Any] | None = None) -> 
         )
     if "what happens after" in q:
         return None  # let LLM handle other “what happens” variants
-    if any(k in q for k in ["random forest", "machine learning", "ml model", "how does ml work", "ml working"]):
+    if any(k in q for k in ["random forest", "machine learning", "ml model", "how does ml work", "ml working", "how ml works"]):
         return (
-            "**ML vs Power-Flow in SolarGrid:**\n"
-            "- **Random Forest (18 features: bus, kW, transformer, feeder, distance, load, ratios)** → fast pre-screen in ms, outputs SAFE/CAUTION/CONSTRAINED + probabilities. It never sees voltages/loadings — no leakage.\n"
-            "- **pandapower NR power-flow (BASE + PV)** → deterministic physics, measures feeder min/max voltage, PV-bus rise, line/transformer loading, losses, reverse flow.\n"
-            "- **Thresholds** decide: hard → CONSTRAINED, caution bands → CAUTION, else SAFE. **Power-flow is the authority** — if ML says SAFE but physics says CONSTRAINED, physics wins (shown as disagreement). Model is frozen `suryagrid_model_v2.pkl` (sklearn 1.3.2), never retrained."
+            "### How ML Works in SolarGrid\n\n"
+            "- **Model:** `suryagrid_model_v2.pkl` — **Random Forest**, 18 features (`pv_bus` int-cast for OneHot, `new_pv_kw`, `transformer_sn_kva`, `base_voltage_pu`, `feeder_distance_km`, `upstream R/X/Z`, ratios). No voltages/loadings — no leakage.\n"
+            "- **Training:** 1692 scenarios (seed 42, `existing 0@70% else 3–15`, `new 5–250` kW, dedup) → power-flow labels → `train_ml_v2.py` Pipeline `OneHotEncoder(handle_unknown ignore) + StandardScaler + RandomForest` (tree_count from fitted estimator). `enriched_features.json` contract-checked at startup.\n"
+            "- **Inference:** `build_features(bus, existing, new)` → `DataFrame[18]` → `predict` + `predict_proba` in ms, returns SAFE/CAUTION/CONSTRAINED + 3 probs + `features_used` + `tree_count`.\n"
+            "- **Role:** **Pre-screen only** — never overrides physics. Shown side-by-side with power-flow; disagreement is flagged `ml_agrees_with_engineering=false` for DISCOM.\n"
+        )
+    if any(k in q for k in ["how validation", "validation is working", "how validation works", "validation using physics"]):
+        return (
+            "### How Validation Works — Physics Decides\n\n"
+            "1. **ML pre-screen** (ms): see above.\n"
+            "2. **Power-flow verification** (`PowerFlowService`): `BASE = existing PV` and `PV = existing+new` via `pp.create_sgen(q=0) + pp.runpp(NR 500, tol 1e-3, taps FIXED)` on `feeder_network.json` (114 buses, 40 lines, 30 trafos). Measures feeder min/max voltage, PV-bus rise, line/transformer loading, losses, reverse flow.\n"
+            "3. **Thresholds** (`scenario_config.json`): hard limits (`maxV>1.05`, `minV<0.90`, `|rise|>0.05`, `line>100%`, `trafo>100%`) → **CONSTRAINED**; else caution bands (`maxV>1.03`, `|rise|>=0.03`, `line>=80%`, `trafo>=95%`, reverse) → **CAUTION**; else **SAFE**. Reverse alone is CAUTION.\n"
+            "4. **Result:** `RiskAssessmentService.evaluate` + `combine(ml, verdict)` stores both; **power-flow is the authority**. `verify_phase1` must PASS (40-row label replay). One feeder, one load profile — thresholds are tuned to this feeder’s 0.905 pu / 92.8% T7 baseline.\n"
+        )
+    if any(k in q for k in ["how physics simulation works", "how does physics simulation work", "how the physics simulation works"]):
+        return (
+            "### How Physics Simulation Works\n\n"
+            "- **Engine:** `pandapower` Newton-Raphson, 500 iterations, `numba False`, `enforce_q_limits False`.\n"
+            "- **Two runs per assessment:** `BASE` (existing PV only) and `PV` (existing+new) on `feeder_network.json` (taps FIXED, not `feeder_network_ldc.json`). Each creates a `sgen` at `bus_idx` with `p_mw=kW/1000`, `q_mvar=0` (unity PF), solves, extracts `CaseMetrics` (min/max VM, `pv_bus_vm`, `ext_p_mw`, `losses = source+gen−load`, `max_line/trafo loading`, `line_p`, `trafo_p`, `bus_vm` per bus).\n"
+            "- **Per-element detail:** `simulate_with_elements` adds `path` (700→bus via `respect_switches=True`), `buses {before/after/delta pu}`, `lines {before/after %, p_before/after, direction}`, `transformers {before/after %, direction}`, `energy_balance {grid_before/after, solar, local, self, export, feeder_load}`.\n"
+            "- **Hosting capacity:** Bisection `lo 1 hi 2000` (~11 solves) finds largest kW before any hard limit; feeder section `simulate_group` (even split, `is_route` check, overstatement factor up to 23×).\n"
         )
     if any(k in q for k in ["how can i apply", "how to apply", "apply for a new application", "new application how", "how do i apply"]):
         return (
@@ -98,6 +134,36 @@ def rule_based_fallback(message: str, context: dict[str, Any] | None = None) -> 
             "4) Click **Submit application** — the system runs ML pre-screen + pandapower power-flow and sends it to DISCOM. Track it in **My applications → Progress** (Submitted → Grid check → DISCOM review → Decision → Installer → Verified).\n"
             "No sanctioned load needed — the system fills it from the connection point. DISCOM confirms the provisional bus."
         )
+    # Show bus on 3D twin — direct action, no LLM needed
+    m_bus = re.search(r"bus\s*(\d+)", q)
+    if m_bus and any(k in q for k in ["show", "focus", "highlight", "3d", "twin", "display"]):
+        bid = m_bus.group(1)
+        # Return a sentinel that routes_assistant will turn into FOCUS_BUS; we return text + action via fast path
+        # We can't return action from this sync function, so return text that will be paired with heuristic action
+        # Instead, let the caller handle it — but we can at least return a helpful text
+        return f"Showing **Bus {bid}** on the 3D twin — flying the Cesium camera to that bus and highlighting its path. Click **View on 3D Twin** if it doesn’t auto-focus."
+
+    # Hosting capacity — any phrasing like "capable solar power", "hosting capacity", "how much can bus handle"
+    if any(k in q for k in ["capable", "hosting capacity", "how much can", "how much solar can", "maximum pv", "max pv"]) or ("bus" in q and "capable" in q):
+        bus_id = None
+        m_bus2 = re.search(r"bus\s*(\d+)", q)
+        if m_bus2:
+            bus_id = m_bus2.group(1)
+        elif context and context.get("pv_bus"):
+            bus_id = str(context.get("pv_bus"))
+        if bus_id:
+            try:
+                from app.services.hosting_capacity import get_hosting_capacity_service
+
+                cap = get_hosting_capacity_service().capacity_for(bus_id, 0)
+                return (
+                    f"**Bus {bus_id}** can host about **{cap.hosting_capacity_kw:.1f} kW** of additional solar before hitting a hard limit. "
+                    f"**Limiting factor:** {cap.limiting_constraint} — {cap.limiting_reason}. "
+                    f"At that capacity the risk would be **{cap.risk_at_capacity}** (power-flow bisection, {cap.power_flows_run} solves). "
+                    f"For your **10 kW** question: it **{'fits within' if 10 <= cap.hosting_capacity_kw else 'exceeds'}** this limit."
+                )
+            except Exception:
+                pass
     # Hosting capacity question — answer directly from power-flow without LLM (fast, never times out)
     m_kw = re.search(r"(\d+(?:\.\d+)?)\s*kW", q)
     if m_kw and ("can i install" in q or "install" in q) and context and context.get("pv_bus"):
@@ -342,6 +408,42 @@ def tool_specs() -> list[dict[str, Any]]:
         {
             "type": "function",
             "function": {
+                "name": "get_project_documentation",
+                "description": "Search the full SolarGrid project documentation (PROJECT.md, ~5700 lines) for any question about how the system was built, architecture, ML, power-flow, thresholds, workflows, deployment, troubleshooting. Returns the most relevant excerpt.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string", "description": "User question or keywords to search for"}},
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_subsidy_estimate",
+                "description": "Get PM Surya Ghar subsidy estimate for a given solar capacity in kW (uses real sorg/scheme_config slabs).",
+                "parameters": {"type": "object", "properties": {"capacity_kw": {"type": "number", "description": "Solar capacity in kW, e.g. 3"}}, "required": ["capacity_kw"]},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "list_vendors",
+                "description": "List vendors/installers (count, ratings, locations, status). Optionally filter by district.",
+                "parameters": {"type": "object", "properties": {"district": {"type": "string", "description": "Optional district filter"}}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_finished_applications",
+                "description": "Count and list applications that are fully finished (VERIFIED).",
+                "parameters": {"type": "object", "properties": {}, "required": []},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "explain_term",
                 "description": "Explain an electrical term in plain language with context.",
                 "parameters": {"type": "object", "properties": {"term": {"type": "string"}}, "required": ["term"]},
@@ -536,6 +638,73 @@ async def execute_tool(
             # apps is list[dict]
             summary = [{"application_number": a.get("application_number"), "id": a.get("id"), "status": a.get("status"), "pv_bus": a.get("pv_bus"), "new_pv_kw": a.get("new_pv_kw")} for a in (apps or [])]
             return {"count": len(summary), "applications": summary[:20], "total": len(apps or [])}
+
+        if name == "get_project_documentation":
+            query = args.get("query", "") or args.get("q", "") or ""
+            # Simple keyword search over PROJECT.md, return top matching sections
+            from pathlib import Path
+
+            from app.core.paths import REPO_ROOT
+
+            doc_path = REPO_ROOT / "docs" / "PROJECT.md"
+            if not doc_path.exists():
+                return {"error": "Project documentation not found."}
+            text = doc_path.read_text(encoding="utf-8", errors="ignore")
+            # Very small retrieval: split into sections by ## and rank by keyword overlap
+            q_words = {w.lower() for w in query.split() if len(w) > 2}
+            # Also include the raw query lower for phrase match
+            q_low = query.lower()
+            sections = text.split("\n## ")
+            scored = []
+            for sec in sections[1:]:  # skip header
+                sec_low = sec.lower()
+                # Score = count of q_words present + phrase bonus
+                score = sum(1 for w in q_words if w in sec_low)
+                if q_low[:30] in sec_low:
+                    score += 5
+                if score > 0:
+                    scored.append((score, sec))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            top = [s for _, s in scored[:3]]
+            if not top:
+                # fallback: return first 2000 chars
+                top = [text[:3000]]
+            excerpt = "\n\n---\n\n".join(["## " + t[:6000] for t in top])
+            return {"query": query, "excerpt": excerpt[:8000], "lines": len(text.splitlines())}
+
+        if name == "get_subsidy_estimate":
+            cap = float(args.get("capacity_kw", 0))
+            if cap <= 0:
+                return {"error": "capacity_kw must be >0"}
+            from app.services.scheme import get_scheme_service
+
+            est = get_scheme_service().estimate_cfa(cap)
+            if not est:
+                return {"error": "No subsidy estimate for this capacity."}
+            d = est.as_dict() if hasattr(est, "as_dict") else dict(est)
+            return {"subsidy": d, "capacity_kw": cap}
+
+        if name == "list_vendors":
+            district = args.get("district")
+            from app.services.vendors import get_vendor_service
+
+            svc = get_vendor_service()
+            vendors = svc.public_vendors() if not district else svc.discover(district=district)
+            # public_vendors returns list, discover returns dict
+            if isinstance(vendors, dict) and "vendors" in vendors:
+                vendors = vendors["vendors"]
+            # Sanitize to count + few fields
+            out = []
+            for v in (vendors or [])[:20]:
+                out.append({k: v.get(k) for k in ["business_name", "rating", "district", "state", "service_areas", "status"] if k in v})
+            return {"count": len(vendors or []), "vendors": out}
+
+        if name == "get_finished_applications":
+            from app.db.service import db
+
+            apps = db.list_applications_for_user(user.access_token)
+            finished = [a for a in (apps or []) if a.get("status") == "VERIFIED"]
+            return {"total": len(apps or []), "finished": len(finished), "finished_applications": finished[:10]}
 
         if name == "explain_term":
             term = _require_arg(args, "term").lower()

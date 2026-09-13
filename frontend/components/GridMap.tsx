@@ -415,6 +415,27 @@ export function GridMap({ data }: { data: MapData }) {
 
   const active = LAYERS.find((l) => l.id === layer)!;
 
+  // Assistant 2D map sync: focus bus/line when chatbot requests it
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { type: string; payload: Record<string, unknown> };
+      if (!detail || !map.current) return;
+      if (detail.type === "FOCUS_BUS" && detail.payload.busId) {
+        const bus = buses.find((b) => b.asset_code === String(detail.payload.busId));
+        if (bus?.latitude && bus?.longitude) {
+          map.current.flyTo({ center: [bus.longitude as number, bus.latitude as number], zoom: 15, duration: 1200 });
+          // highlight temporarily
+          const orig = bus.asset_code;
+          // simple flash: could set popup
+          popup.current?.remove();
+          popup.current = new maplibregl.Popup({ closeButton: true }).setLngLat([bus.longitude as number, bus.latitude as number]).setHTML(`<div style="font-family:ui-sans-serif;font-size:12px"><b>Bus ${orig}</b><div>Focused via assistant</div></div>`).addTo(map.current!);
+        }
+      }
+    };
+    window.addEventListener("solargrid:assistant-action", handler as EventListener);
+    return () => window.removeEventListener("solargrid:assistant-action", handler as EventListener);
+  }, [buses]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-1.5">

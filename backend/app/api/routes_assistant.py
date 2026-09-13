@@ -21,6 +21,7 @@ from app.services.ai_assistant import (
     call_nvidia,
     execute_tool,
     extract_reply,
+    rule_based_fallback,
     tool_specs,
 )
 
@@ -111,23 +112,193 @@ async def chat(
             detail="SolarGrid AI assistant is temporarily unavailable (LLM not configured). Your grid data and assessments are unaffected.",
         )
 
-    # Fast path: common greetings / workflow / count / classification answered without calling NIM (never times out)
-    from app.services.ai_assistant import rule_based_fallback
-
+    # Fast path: common intents answered without NIM (never times out, instant)
     q_low = payload.message.lower()
-    if any(k in q_low for k in ["how many application", "how many applications", "how many did i apply"]):
-        from app.services.ai_assistant import execute_tool
+    import re as _re2
 
+    # Count — ChatGPT-style bulletin
+    if any(k in q_low for k in ["how many application", "how many applications", "how many did i apply"]):
         res = await execute_tool("list_my_applications", {}, user)
         if "count" in res:
-            reply = f"You have **{res['count']}** application(s) in SolarGrid."
+            reply = f"### Your SolarGrid Applications — {res['count']} total\n\n"
             if res.get("applications"):
-                reply += "\n\n" + "\n".join([f"- **{a['application_number']}**: {a['status']} — Bus {a.get('pv_bus','—')}, {a.get('new_pv_kw','—')} kW" for a in res["applications"][:10]])
+                for a in res["applications"][:10]:
+                    status_badge = {"APPROVED":"✅ APPROVED","VERIFIED":"✅ VERIFIED","VENDOR_SELECTED":"🔧 VENDOR SELECTED","INSTALLING":"🔧 INSTALLING","REJECTED":"❌ REJECTED"}.get(a.get("status"), a.get("status"))
+                    reply += f"- **{a['application_number']}** — {status_badge} · Bus **{a.get('pv_bus','—')}** · **{a.get('new_pv_kw','—')} kW**\n"
+                reply += f"\n> Ask `Tell me about SG-XXXX` for details on any one, or `Show Bus 734 on 3D twin` to fly there."
+            else:
+                reply += "_No applications yet — create one via **Citizen → New application**._"
             return ChatResponse(reply=reply, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+
+    # Show bus on 3D twin — direct action, no LLM
+    m_bus_show = _re2.search(r"bus\s*(\d+)", q_low)
+    if m_bus_show and any(k in q_low for k in ["show", "focus", "highlight", "display", "3d twin", "twin", "map"]):
+        bid = m_bus_show.group(1)
+        return ChatResponse(
+            reply=f"Showing **Bus {bid}** on the 3D twin — flying the camera there and highlighting its path. If you don’t see it, make sure the twin is visible (toggle **3D grid twin**).",
+            actions=[ChatAction(type="FOCUS_BUS", payload={"busId": bid})],
+            context_used=payload.context.model_dump() if payload.context else None,
+        )
+
+    # Specific application by number (SG-XXXX) — direct lookup, with intent-aware details
+    m_sg = _re2.search(r"sg-[a-f0-9]{6,}", q_low)
+    if m_sg:
+        sg = m_sg.group(0).upper()
+        res = await execute_tool("list_my_applications", {}, user)
+        hit = next((a for a in res.get("applications", []) if a.get("application_number", "").upper() == sg), None)
+        if hit:
+            det = await execute_tool("get_application_details", {"application_id": hit["id"]}, user)
+            ass = await execute_tool("get_assessment", {"application_id": hit["id"]}, user)
+            app = det.get("application", hit)
+            # Intent: physics simulation values?
+            asks_physics = any(k in q_low for k in ["physics simulation values", "simulation values", "physics values", "what is the physics simulation"])
+            if asks_physics and "assessment" in ass and isinstance(ass["assessment"], dict):
+                a = ass["assessment"]
+                m = a.get("metrics", {}) if isinstance(a.get("metrics"), dict) else {}
+                eng = a.get("engineering", {}) if isinstance(a.get("engineering"), dict) else {}
+                ml = a.get("ml", {}) if isinstance(a.get("ml"), dict) else {}
+                reply = f"### {app.get('application_number')} — Physics Simulation Values (Power-Flow)\n\n"
+                reply += f"- **Bus:** {app.get('pv_bus')} · **Solar:** {app.get('existing_pv_kw')} kW existing + **{app.get('new_pv_kw')} kW new** (total {app.get('total_pv_kw')} kW) · **Status:** `{app.get('status')}`\n"
+                reply += f"- **Voltages:** PV bus **{m.get('pv_voltage_pu','—')} pu** (base {m.get('base_voltage_pu','—')} pu, **rise {m.get('voltage_rise_pu','—')} pu**), feeder **{m.get('feeder_min_voltage_pu','—')} – {m.get('feeder_max_voltage_pu','—')} pu** (min at {m.get('min_voltage_bus','—')}, max at {m.get('max_voltage_bus','—')})\n"
+                reply += f"- **Loadings:** Transformer **{m.get('worst_transformer','—')} {m.get('max_transformer_loading_pct','—')}%** (base {m.get('base_max_transformer_loading_pct','—')}%), Line **{m.get('worst_line','—')} {m.get('max_line_loading_pct','—')}%** (base {m.get('base_max_line_loading_pct','—')}%)\n"
+                reply += f"- **Losses & Flow:** Power loss **{m.get('power_loss_kw','—')} kW** (Δ {m.get('delta_losses_kw','—')} kW), Grid supply **{m.get('base_total_p_kw','—')} → {m.get('pv_total_p_kw','—')} kW**, Reverse: **{m.get('reverse_power_flow','—')}** ({m.get('reverse_reason','')})\n"
+                reply += f"- **Engineering:** **{eng.get('engineering_risk','—')}** — {eng.get('constraint_type','—')}: {eng.get('constraint_reason','')}\n"
+                reply += f"- **ML pre-screen:** **{ml.get('prediction','—')}** (safe {ml.get('safe_probability',0):.2f} / caution {ml.get('caution_probability',0):.2f} / constrained {ml.get('constrained_probability',0):.2f})\n"
+                reply += f"> **Power-flow decides** — thresholds from `scenario_config.json` (hard `>` vs caution `>=`).\n"
+                return ChatResponse(reply=reply, actions=[ChatAction(type="FOCUS_BUS", payload={"busId": str(app.get('pv_bus'))})], context_used=payload.context.model_dump() if payload.context else None)
+            # Intent: does user ask for model inputs?
+            asks_inputs = any(k in q_low for k in ["input given to the model", "what are the input", "inputs to the model", "features given", "what inputs"])
+            if asks_inputs and "assessment" in ass and isinstance(ass["assessment"], dict):
+                ml = ass["assessment"].get("ml", {})
+                feats = ml.get("features_used", {}) if isinstance(ml.get("features_used"), dict) else {}
+                reply = f"### {app.get('application_number')} — Model Inputs (18 features)\n\n"
+                reply += f"Bus **{app.get('pv_bus')}** · Requested **{app.get('new_pv_kw')} kW** (existing {app.get('existing_pv_kw')} kW)\n\n"
+                reply += "**Pre-screen inputs (what the Random Forest saw):**\n"
+                if feats:
+                    for k, v in feats.items():
+                        reply += f"- `{k}`: **{v}**\n"
+                    reply += f"\n> No voltages/loadings — those are power-flow outputs, not inputs (no leakage). Tree count: **{ml.get('tree_count','—')}**, model `{ml.get('model_file','suryagrid_model_v2.pkl')}`.\n"
+                else:
+                    reply += "_No stored feature vector — this assessment may pre-date input logging._\n"
+                eng = ass["assessment"].get("engineering", {}) if isinstance(ass["assessment"].get("engineering"), dict) else {}
+                reply += f"\n**Result:** ML **{ml.get('prediction','—')}** (safe {ml.get('safe_probability','—'):.2f}) → Engineering **{eng.get('engineering_risk','—')}** — physics wins.\n"
+                return ChatResponse(reply=reply, actions=[ChatAction(type="FOCUS_BUS", payload={"busId": str(app.get('pv_bus'))})], context_used=payload.context.model_dump() if payload.context else None)
+
+            # Default: full application bulletin
+            # Try to get richer fields via direct DB for this app (address, applicant, created_at)
+            full_app = None
+            try:
+                from app.db.service import db as _db
+
+                full_app = _db.get_application(user.access_token, hit["id"])
+            except Exception:
+                full_app = app
+            fa = full_app or app
+            reply = f"### {fa.get('application_number')} — **{fa.get('status')}**\n\n"
+            reply += f"- **Applicant:** {fa.get('applicant_name','—')} · **Phone:** {fa.get('contact_phone','—')}\n"
+            reply += f"- **Address:** {fa.get('address_line','—')}, {fa.get('district','—')}, {fa.get('state','—')} {fa.get('pincode','')}\n"
+            reply += f"- **Site:** {fa.get('latitude','—')}, {fa.get('longitude','—')} · **Bus:** **{fa.get('pv_bus')}** ({fa.get('feeder_section','—')} via {fa.get('transformer_association','—')})\n"
+            reply += f"- **Solar:** Existing **{fa.get('existing_pv_kw')} kW** → Requested **{fa.get('new_pv_kw')} kW** (total **{fa.get('total_pv_kw')} kW**) · Roof {fa.get('roof_area_sqm','—')} m², {fa.get('roof_type','—')}\n"
+            reply += f"- **Status:** `{fa.get('status')}` · Created {str(fa.get('created_at',''))[:10]}\n"
+            if "assessment" in ass and isinstance(ass["assessment"], dict):
+                eng = ass["assessment"].get("engineering", {})
+                ml = ass["assessment"].get("ml", {})
+                metrics = ass["assessment"].get("metrics", {})
+                reply += f"\n**Assessment:**\n"
+                reply += f"- **Engineering:** **{eng.get('engineering_risk','—')}** — {eng.get('constraint_type','—')}: {eng.get('constraint_reason','')}\n"
+                reply += f"- **ML pre-screen:** **{ml.get('prediction','—')}** (safe {ml.get('safe_probability',0):.2f}, caution {ml.get('caution_probability',0):.2f}, constrained {ml.get('constrained_probability',0):.2f})\n"
+                if metrics:
+                    reply += f"- **Power-flow:** PV bus {metrics.get('pv_voltage_pu','—')} pu (rise {metrics.get('voltage_rise_pu','—')} pu), Trafo {metrics.get('max_transformer_loading_pct','—')}%, Line {metrics.get('max_line_loading_pct','—')}%, Reverse: {metrics.get('reverse_power_flow','—')}\n"
+                reply += f"> **Power-flow decides** — if ML says SAFE but physics says CONSTRAINED, physics wins. Thresholds from `scenario_config.json`.\n"
+            else:
+                reply += f"\n_No stored assessment yet — run one via **DISCOM → Applications → Assess**._\n"
+            return ChatResponse(reply=reply, actions=[ChatAction(type="FOCUS_BUS", payload={"busId": str(fa.get('pv_bus'))})], context_used=payload.context.model_dump() if payload.context else None)
+
+    # Subsidy — PM Surya Ghar
+    if "subsidy" in q_low:
+        m_kw_sub = _re2.search(r"(\d+(?:\.\d+)?)\s*kW", q_low)
+        if m_kw_sub:
+            try:
+                res = await execute_tool("get_subsidy_estimate", {"capacity_kw": float(m_kw_sub.group(1))}, user)
+                if "subsidy" in res:
+                    s = res["subsidy"]
+                    reply = f"### Subsidy for {m_kw_sub.group(1)} kW (PM Surya Ghar)\n\n"
+                    reply += f"- **Eligible capacity:** {s.get('eligible_capacity_kw')} kW\n"
+                    reply += f"- **Subsidy amount:** **{s.get('currency','INR')} {s.get('amount',0):,.0f}**\n"
+                    if s.get("breakdown"):
+                        reply += "\n**Breakdown:**\n"
+                        for b in s["breakdown"]:
+                            reply += f"  - {b.get('from_kw')}–{b.get('to_kw')} kW × {b.get('rate_per_kw')} = {b.get('amount')}\n"
+                    if s.get("capped"):
+                        reply += f"\n* Capped at max {s.get('max_subsidy')} — {s.get('disclaimer','')}*\n"
+                    reply += f"\n> {s.get('disclaimer','')} — verify on the official portal."
+                    return ChatResponse(reply=reply, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+            except Exception:
+                pass
+
+    # Vendor queries
+    if "vendor" in q_low or "installer" in q_low:
+        if any(k in q_low for k in ["how many vendor", "how many installer", "number of vendor"]):
+            res = await execute_tool("list_vendors", {}, user)
+            if "count" in res:
+                reply = f"### Vendors — {res['count']} total\n\n"
+                for v in res.get("vendors", [])[:10]:
+                    reply += f"- **{v.get('business_name')}** — {v.get('district','—')}, {v.get('state','—')} · Rating **{v.get('rating','—')}/5** · {v.get('status')}\n"
+                return ChatResponse(reply=reply, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+        if any(k in q_low for k in ["rating", "where are they", "where are vendor", "location"]):
+            res = await execute_tool("list_vendors", {}, user)
+            if "vendors" in res:
+                reply = "### Vendors — Locations & Ratings\n\n"
+                for v in res["vendors"][:10]:
+                    reply += f"- **{v.get('business_name')}** — **{v.get('rating','—')}/5** · {v.get('district','—')}, {v.get('state','—')} · Areas: {', '.join(v.get('service_areas',[])[:3]) or '—'}\n"
+                reply += "\n> Only **APPROVED and active** vendors are shown to citizens."
+                return ChatResponse(reply=reply, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+
+    # Finished applications
+    if any(k in q_low for k in ["finished fully", "finished", "verified", "completed fully", "how many.*verified"]):
+        if "application" in q_low:
+            res = await execute_tool("get_finished_applications", {}, user)
+            if "finished" in res:
+                reply = f"### Finished Applications — {res['finished']} of {res['total']} verified\n\n"
+                for a in res.get("finished_applications", [])[:5]:
+                    reply += f"- **{a.get('application_number')}** — Bus {a.get('pv_bus')} · {a.get('new_pv_kw')} kW\n"
+                if res["finished"] == 0:
+                    reply += "_No application is VERIFIED yet — they are in progress._"
+                return ChatResponse(reply=reply, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+
+    # Hosting/capable — direct power-flow answer + focus
+    if any(k in q_low for k in ["capable", "hosting capacity", "how much can", "maximum pv", "max pv"]) and ("bus" in q_low or (payload.context and payload.context.pv_bus)):
+        bus_id = None
+        m_b = _re2.search(r"bus\s*(\d+)", q_low)
+        if m_b:
+            bus_id = m_b.group(1)
+        elif payload.context and payload.context.pv_bus:
+            bus_id = str(payload.context.pv_bus)
+        if bus_id:
+            try:
+                from app.services.hosting_capacity import get_hosting_capacity_service
+
+                cap = get_hosting_capacity_service().capacity_for(bus_id, 0)
+                reply = (
+                    f"**Bus {bus_id}** can host about **{cap.hosting_capacity_kw:.1f} kW** before a hard limit. "
+                    f"**Limiting:** {cap.limiting_constraint} — {cap.limiting_reason}. "
+                    f"At that point risk would be **{cap.risk_at_capacity}** (bisection, {cap.power_flows_run} solves)."
+                )
+                return ChatResponse(reply=reply, actions=[ChatAction(type="FOCUS_BUS", payload={"busId": bus_id})], context_used=payload.context.model_dump() if payload.context else None)
+            except Exception:
+                pass
 
     fast = rule_based_fallback(payload.message, payload.context.model_dump() if payload.context else None)
     if fast:
-        return ChatResponse(reply=fast, actions=[], context_used=payload.context.model_dump() if payload.context else None)
+        # Attach focus action for show-bus even when fast path handled it via text
+        m_bus_fast = _re2.search(r"bus\s*(\d+)", q_low)
+        acts = []
+        if m_bus_fast and any(k in q_low for k in ["show", "focus", "highlight"]):
+            acts = [ChatAction(type="FOCUS_BUS", payload={"busId": m_bus_fast.group(1)})]
+        # Hosting fast path may need focus too
+        if not acts and any(k in q_low for k in ["capable", "hosting capacity"]) and m_bus_fast:
+            acts = [ChatAction(type="FOCUS_BUS", payload={"busId": m_bus_fast.group(1)})]
+        return ChatResponse(reply=fast, actions=acts, context_used=payload.context.model_dump() if payload.context else None)
 
     # Build messages
     history = _trim_history(payload.history)
@@ -289,6 +460,17 @@ async def chat(
                             f"(maxV>1.05, minV<0.90, |rise|>0.05, line>100% or trafo>100%); else **CAUTION** if "
                             f"(maxV>1.03, |rise|≥0.03, line≥80%, trafo≥95% or reverse flow); else **SAFE**. "
                             f"Your thresholds: {th}. Power-flow decides, ML (Random Forest) is only the pre-screen."
+                        )
+                        break
+            if not content:
+                for r in tool_results:
+                    if "hosting_capacity" in r and isinstance(r["hosting_capacity"], dict):
+                        hc = r["hosting_capacity"]
+                        bus = hc.get("bus_id") or payload.context.pv_bus if payload.context else "—"
+                        content = (
+                            f"**Bus {bus}** can host about **{hc.get('hosting_capacity_kw','—')} kW** before hitting a hard limit. "
+                            f"**Limiting:** {hc.get('limiting_constraint','—')} — {hc.get('limiting_reason','')}. "
+                            f"Risk at that capacity: **{hc.get('risk_at_capacity','—')}** (bisection, {hc.get('power_flows_run','—')} solves, {hc.get('method','')})."
                         )
                         break
             if not content:

@@ -4,10 +4,16 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import dynamic from "next/dynamic";
 import { ApplicationTracker } from "@/components/ApplicationTracker";
 import { AssessmentResult } from "@/components/AssessmentResult";
 import { TwinDiagram } from "@/components/TwinDiagram";
 import { api, ApiError, engagementApi } from "@/lib/api";
+
+const GridTwin3D = dynamic(() => import("@/components/GridTwin3D").then((m) => m.GridTwin3D), {
+  ssr: false,
+  loading: () => <div className="flex h-[520px] items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-sm text-slate-500">Loading 3D twin…</div>,
+});
 import type {
   ApplicationStatus,
   Assessment,
@@ -64,6 +70,9 @@ export default function ApplicationDetailPage() {
   const [app, setApp] = useState<SolarApplication | null>(null);
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [twin, setTwin] = useState<TwinResponse | null>(null);
+  const [twinView, setTwinView] = useState<"2d" | "3d">("2d");
+  const [houses, setHouses] = useState<{ house_id: string; pv_bus: string; latitude: number; longitude: number }[]>([]);
+  const [busPos, setBusPos] = useState<{ latitude: number; longitude: number } | null>(null);
   const [installReturn, setInstallReturn] = useState<{ notes: string; returned_at: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -130,7 +139,31 @@ export default function ApplicationDetailPage() {
       })
       .then(setTwin)
       .catch(() => setTwin(null));
+    api
+      .busHouses(app.pv_bus)
+      .then((h) => {
+        setHouses(h.houses);
+        setBusPos(h.bus_position);
+      })
+      .catch(() => {
+        setHouses([]);
+        setBusPos(null);
+      });
   }, [app, decided]);
+
+  // Assistant → View Bus: ensure 3D twin is visible and will fly (re-dispatch after mount)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail as { type: string; payload: Record<string, unknown> };
+      if (d?.type === "FOCUS_BUS") {
+        setTwinView("3d");
+        // Re-dispatch after twin mounts (3D component listens)
+        setTimeout(() => window.dispatchEvent(new CustomEvent("solargrid:assistant-action", { detail: d })), 600);
+      }
+    };
+    window.addEventListener("solargrid:assistant-action", h as EventListener);
+    return () => window.removeEventListener("solargrid:assistant-action", h as EventListener);
+  }, []);
 
   if (error && !app) {
     return (
@@ -323,7 +356,35 @@ export default function ApplicationDetailPage() {
             </div>
           )}
 
-          {twin && <TwinDiagram twin={twin} />}
+          {twin && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-lg border border-slate-700 p-0.5">
+                  {(["2d", "3d"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setTwinView(m)}
+                      className={`rounded-md px-3 py-1 text-xs font-medium transition ${twinView === m ? "bg-slate-700 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      {m === "2d" ? "2D schematic" : "3D grid twin"}
+                    </button>
+                  ))}
+                </div>
+                <span className="text-xs text-slate-500">
+                  {houses.length > 0 ? `Bus ${app?.pv_bus} → ${houses.map((h) => h.house_id).join(", ")}` : "Same TwinResponse as DISCOM"}
+                </span>
+              </div>
+              {twinView === "2d" ? (
+                <TwinDiagram twin={twin} />
+              ) : app?.latitude != null && app?.longitude != null ? (
+                <GridTwin3D twin={twin} houses={houses} busPosition={busPos} siteLatitude={app.latitude} siteLongitude={app.longitude} siteLabel={app.application_number} />
+              ) : busPos ? (
+                <GridTwin3D twin={twin} houses={houses} busPosition={busPos} />
+              ) : (
+                <p className="rounded-lg border border-amber-900 bg-amber-950/40 p-3 text-xs text-amber-200">3D needs a site or bus position.</p>
+              )}
+            </div>
+          )}
 
           {assessment && <AssessmentResult result={assessment} />}
 

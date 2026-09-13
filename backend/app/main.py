@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.routes_assistant import router as assistant_router
 from app.api.routes_discom import router as discom_router
 from app.api.routes_scheme import router as scheme_router
 from app.api.routes_vendor_portal import router as vendor_portal_router
@@ -90,6 +91,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(assistant_router)
 app.include_router(discom_router)
 app.include_router(vendors_router)
 app.include_router(vendor_portal_router)

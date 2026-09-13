@@ -195,4 +195,9 @@ def get_routing_service() -> RoutingService:
 
     if provider_name == "osrm" and base_url:
         return RoutingService(OSRMProvider(base_url))
+    # Default to public OSRM demo for citizen/vendor road routing
+    # (Google-like shortest path). If unreachable, OSRMProvider degrades
+    # to straight line with a note — never fails the request.
+    if not provider_name and not base_url:
+        return RoutingService(OSRMProvider("https://router.project-osrm.org"))
     return RoutingService(StraightLineProvider())

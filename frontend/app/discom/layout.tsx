@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { SolarGridAssistant } from "@/components/assistant/SolarGridAssistant";
 import { discomApi } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/lib/supabase";
@@ -84,17 +85,20 @@ export default function DiscomLayout({ children }: { children: React.ReactNode }
   }
 
   return (
-    <AppShell
-      links={LINKS}
-      badge="DISCOM"
-      homeHref="/discom/dashboard"
-      email={me?.email ?? null}
-      onSignOut={async () => {
-        try { await supabase.auth.signOut(); } catch {}
-        router.replace("/login");
-      }}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        links={LINKS}
+        badge="DISCOM"
+        homeHref="/discom/dashboard"
+        email={me?.email ?? null}
+        onSignOut={async () => {
+          try { await supabase.auth.signOut(); } catch {}
+          router.replace("/login");
+        }}
+      >
+        {children}
+      </AppShell>
+      <SolarGridAssistant />
+    </>
   );
 }

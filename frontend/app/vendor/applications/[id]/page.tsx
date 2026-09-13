@@ -1,8 +1,15 @@
 "use client";
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, clearApiCache, vendorApi } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+
+const TwinDiagram = dynamic(() => import("@/components/TwinDiagram").then((m) => m.TwinDiagram), { ssr: false });
+const GridTwin3D = dynamic(() => import("@/components/GridTwin3D").then((m) => m.GridTwin3D), {
+  ssr: false,
+  loading: () => <div className="flex h-[520px] items-center justify-center rounded-xl border border-slate-800 bg-slate-950 text-sm text-slate-500">Loading 3D twin…</div>,
+});
 
 type Detail = {
   application: Record<string, unknown> & { application_number:string; applicant_name:string; pv_bus:string; new_pv_kw:number; existing_pv_kw:number; total_pv_kw:number; status:string; latitude:number|null; longitude:number|null; sanctioned_load_kw:number|null; address_line:string|null; district:string|null; state:string|null; pincode:string|null; consumer_number:string|null; contact_phone:string|null; roof_type:string|null; roof_area_sqm:number|null; reviewed_by:string|null };
@@ -25,6 +32,10 @@ export default function VendorAppDetail(){
   const [error,setError]=useState<string|null>(null);
   const [busy,setBusy]=useState(false);
   const [note,setNote]=useState("");
+  const [twin, setTwin]=useState<import("@/lib/types").TwinResponse | null>(null);
+  const [twinView, setTwinView]=useState<"2d"|"3d">("2d");
+  const [houses, setHouses]=useState<{house_id:string;pv_bus:string;latitude:number;longitude:number}[]>([]);
+  const [busPos, setBusPos]=useState<{latitude:number;longitude:number}|null>(null);
 
   async function load(){
     const { data: sess } = await supabase.auth.getSession();
@@ -35,7 +46,30 @@ export default function VendorAppDetail(){
     if(!res.ok){ const t=await res.text(); throw new Error(t); }
     setData(await res.json());
   }
-  useEffect(()=>{ load().catch(e=>setError(e instanceof Error?e.message:"Failed")); },[id]);
+  useEffect(()=>{
+    load().catch(e=>setError(e instanceof Error?e.message:"Failed"));
+  },[id]);
+
+  // twin (same data as citizen/DISCOM: live simulation, not stored)
+  useEffect(()=>{
+    const a = data?.application as unknown as { pv_bus:string; existing_pv_kw:number; new_pv_kw:number; latitude:number|null; longitude:number|null } | undefined;
+    if(!a?.pv_bus) return;
+    const { api } = require("@/lib/api") as typeof import("@/lib/api");
+    api.twin({ pv_bus: a.pv_bus, existing_pv_kw: Number(a.existing_pv_kw), new_pv_kw: Number(a.new_pv_kw) }).then(setTwin).catch(()=>setTwin(null));
+    api.busHouses(a.pv_bus).then((h: {houses: typeof houses; bus_position: typeof busPos})=>{ setHouses(h.houses); setBusPos(h.bus_position); }).catch(()=>{ setHouses([]); setBusPos(null); });
+  },[data]);
+
+  useEffect(()=>{
+    const h=(e:Event)=>{
+      const d=(e as CustomEvent).detail as {type:string; payload:Record<string,unknown>};
+      if(d?.type==="FOCUS_BUS") {
+        setTwinView("3d");
+        setTimeout(()=> window.dispatchEvent(new CustomEvent("solargrid:assistant-action", {detail: d})), 600);
+      }
+    };
+    window.addEventListener("solargrid:assistant-action", h as EventListener);
+    return ()=> window.removeEventListener("solargrid:assistant-action", h as EventListener);
+  },[]);
 
   async function updateStatus(status:string){
     setBusy(true); setError(null);
@@ -95,6 +129,20 @@ export default function VendorAppDetail(){
           </div>
         </div>
       </div>
+
+      {twin && (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex rounded-lg border p-0.5" style={{borderColor:"rgb(var(--line))"}}>
+              {(["2d","3d"] as const).map((m)=>(
+                <button key={m} onClick={()=>setTwinView(m)} className={`rounded-md px-3 py-1 text-xs font-medium transition ${twinView===m?"text-white":""}`} style={twinView===m?{background:"rgb(var(--accent))"}:{color:"rgb(var(--ink-faint))"}}>{m==="2d"?"2D schematic":"3D grid twin"}</button>
+              ))}
+            </div>
+            <span className="text-xs" style={{color:"rgb(var(--ink-faint))"}}>{houses.length>0?`Bus ${(data?.application as {pv_bus:string})?.pv_bus} → ${houses.map(h=>h.house_id).join(", ")}`:"Same live power-flow twin"}</span>
+          </div>
+          {twinView==="2d" ? <TwinDiagram twin={twin} /> : (()=>{ const a=data?.application as {latitude:number|null;longitude:number|null; application_number:string}|null; return a?.latitude!=null && a?.longitude!=null ? <GridTwin3D twin={twin} houses={houses} busPosition={busPos} siteLatitude={a.latitude} siteLongitude={a.longitude} siteLabel={a.application_number}/> : busPos ? <GridTwin3D twin={twin} houses={houses} busPosition={busPos}/> : <p className="rounded-lg border p-3 text-xs" style={{borderColor:"rgb(220 38 38 / 0.3)", background:"rgb(254 226 226)", color:"rgb(153 27 27)"}}>3D needs a site or bus position.</p>; })()}
+        </div>
+      )}
 
       <div className="card">
         <h2 className="font-bold mb-3" style={{color:"rgb(var(--ink))"}}>Timeline — Registration → Commissioning</h2>

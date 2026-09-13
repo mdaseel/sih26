@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { SolarGridAssistant } from "@/components/assistant/SolarGridAssistant";
 import { ApiError, discomApi, vendorApi } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { supabase } from "@/lib/supabase";
@@ -102,5 +103,12 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
       </div>
     );
   }
-  return <AppShell links={LINKS} badge="Installer" homeHref="/vendor/dashboard" email={summary?.vendor.business_name ?? me?.email ?? null} onSignOut={async () => { try { await supabase.auth.signOut(); } catch {} router.replace("/login"); }}>{children}</AppShell>;
+  return (
+    <>
+      <AppShell links={LINKS} badge="Installer" homeHref="/vendor/dashboard" email={summary?.vendor.business_name ?? me?.email ?? null} onSignOut={async () => { try { await supabase.auth.signOut(); } catch {} router.replace("/login"); }}>
+        {children}
+      </AppShell>
+      <SolarGridAssistant />
+    </>
+  );
 }

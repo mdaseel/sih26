@@ -520,6 +520,62 @@ export function GridTwin3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, twin, houses, busPosition, siteLatitude, siteLongitude]);
 
+  // ---- emit twin context for assistant ----
+  useEffect(() => {
+    if (!ready || !anchor) return;
+    window.dispatchEvent(
+      new CustomEvent("solargrid:twin-context", {
+        detail: { pv_bus: pvBus, application_id: siteLabel || null, risk: String(risk), latitude: anchor.latitude, longitude: anchor.longitude },
+      })
+    );
+  }, [ready, anchor, pvBus, siteLabel, risk]);
+
+  // ---- assistant actions: focus/highlight ----
+  useEffect(() => {
+    const v = viewer.current;
+    const Cesium = cesiumRef.current;
+    if (!ready || !v || !Cesium) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { type: string; payload: Record<string, unknown> };
+      if (!detail) return;
+      if (detail.type === "FOCUS_BUS" && detail.payload.busId) {
+        const busId = String(detail.payload.busId);
+        const g = ground.current || 0;
+        const idx = path.indexOf(busId);
+        if (idx >= 0) {
+          const nPath = Math.max(path.length, 1);
+          const stepLon = 0.00085;
+          const rowLon0 = anchor!.longitude - 0.0021 - (nPath - 1) * stepLon;
+          const rowLat = anchor!.latitude - 0.0004;
+          const lon = rowLon0 + idx * stepLon;
+          const lat = rowLat + (idx % 2 === 0 ? 0.0001 : -0.0001);
+          v.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(lon, lat, g + 120), orientation: { heading: Cesium.Math.toRadians(12), pitch: Cesium.Math.toRadians(-45), roll: 0 }, duration: 1.2 });
+          const b = (elements.buses as any)?.[busId];
+          if (b) setSelected({ title: `BUS ${busId}`, rows: [["Voltage after", `${b.after_pu?.toFixed?.(4) ?? "—"} pu`], ["Rise", `${b.delta_pu >= 0 ? "+" : ""}${b.delta_pu?.toFixed?.(4) ?? "—"} pu`]] });
+        } else {
+          // Bus not in current path (e.g., viewing SG-F402 but focusing 734) — fly to its real asset coordinate
+          api.busHouses(busId).then((h) => {
+            const pos = h.bus_position;
+            if (pos?.latitude && pos?.longitude) {
+              v.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(pos.longitude, pos.latitude, g + 300), orientation: { heading: Cesium.Math.toRadians(12), pitch: Cesium.Math.toRadians(-38), roll: 0 }, duration: 1.5 });
+              setSelected({ title: `BUS ${busId}`, rows: [["Location", `${pos.latitude.toFixed(5)}, ${pos.longitude.toFixed(5)}`], ["Distance from source", `${pos.distance_km?.toFixed(2) ?? "—"} km`]] });
+            }
+          }).catch(() => {
+            // Fallback: stay on current anchor but highlight
+            v.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(anchor!.longitude, anchor!.latitude, g + 200), duration: 1.0 });
+          });
+        }
+      } else if (detail.type === "HIGHLIGHT_PATH" && Array.isArray(detail.payload.assetIds)) {
+        v.scene.requestRender?.();
+      } else if (detail.type === "FOCUS_TRANSFORMER") {
+        const g2 = ground.current || 0;
+        v.camera.flyTo({ destination: Cesium.Cartesian3.fromDegrees(anchor!.longitude - 0.0015, anchor!.latitude - 0.0004, g2 + 150), duration: 1.2 });
+      }
+    };
+    window.addEventListener("solargrid:assistant-action", handler as EventListener);
+    return () => window.removeEventListener("solargrid:assistant-action", handler as EventListener);
+  }, [ready, anchor, path, elements]);
+
   // ---- click any bubble/point/wire/block -> live energy readout ----
   useEffect(() => {
     const v = viewer.current;

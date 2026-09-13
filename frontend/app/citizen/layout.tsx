@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { AppShell } from "@/components/AppShell";
+import { SolarGridAssistant } from "@/components/assistant/SolarGridAssistant";
 import { CITIZEN_LINKS } from "@/components/Nav";
 import { discomApi } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -64,5 +65,12 @@ export default function CitizenLayout({ children }: { children: React.ReactNode 
     );
   }
 
-  return <AppShell links={CITIZEN_LINKS} badge="Citizen" homeHref="/citizen/dashboard" email={email} onSignOut={signOut}>{children}</AppShell>;
+  return (
+    <>
+      <AppShell links={CITIZEN_LINKS} badge="Citizen" homeHref="/citizen/dashboard" email={email} onSignOut={signOut}>
+        {children}
+      </AppShell>
+      <SolarGridAssistant />
+    </>
+  );
 }

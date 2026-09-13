@@ -5,9 +5,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { VendorMap } from "@/components/VendorMap";
+import dynamic from "next/dynamic";
 import { api, ApiError } from "@/lib/api";
 import type { CitizenMapData } from "@/lib/types";
+
+const CitizenCesiumMap = dynamic(() => import("@/components/CitizenCesiumMap").then((m) => m.CitizenCesiumMap), {
+  ssr: false,
+  loading: () => <p className="text-sm text-slate-500">Loading satellite map…</p>,
+});
 
 /**
  * The citizen's map.
@@ -88,9 +93,9 @@ export default function MapPage() {
       )}
 
       {data ? (
-        <VendorMap data={data} />
+        <CitizenCesiumMap data={data} />
       ) : (
-        !error && <p className="text-sm text-slate-500">Loading the map…</p>
+        !error && <p className="text-sm text-slate-500">Loading satellite map…</p>
       )}
 
       {data && data.applications.length > data.located_applications && (

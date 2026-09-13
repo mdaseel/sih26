@@ -7,7 +7,7 @@ const nextConfig = {
   // strings" — dev (`next dev`, no minify) never hits this. Transpiling
   // Cesium through SWC rewrites those escapes to \x00 before minify, which
   // is the documented fix for Next + Cesium.
-  transpilePackages: ["cesium"],
+  transpilePackages: ["cesium", "@cesium/engine", "@spz-loader/core"],
   webpack: (config) => {
     config.module.unknownContextCritical = false;
     // Workers are served from public/cesium (copied by postinstall/build),

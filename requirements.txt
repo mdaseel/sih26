@@ -31,7 +31,9 @@ networkx==3.4.2
 scipy==1.13.1
 
 # --- Data / ML ---
-pandas==2.2.3
+# pandapower 3.4.0 requires pandas~=2.3 (3.4's metadata is strict). 2.2.3 was
+# for the old 2.14 line and now conflicts (your 23.2.1 → ResolutionImpossible).
+pandas==2.3.3
 numpy==1.26.4
 scikit-learn==1.3.2
 

@@ -17,7 +17,7 @@ export default function CitizenLayout({ children }: { children: React.ReactNode 
   const [me, setMe] = useState<Me | null>(null);
 
   async function signOut() {
-    await supabase.auth.signOut();
+    try { await supabase.auth.signOut(); } catch { /* 403 when no valid session — still navigate to /login */ }
     router.replace("/login");
   }
 

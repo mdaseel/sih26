@@ -1,18 +1,19 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Cesium is ~12 MB and contains GLSL/worker strings with \0 octals that
-  // Terser breaks when minified inside template literals in strict mode.
-  // We keep it as a separate chunk and disable mutation of its source.
-  transpilePackages: [],
+  // Cesium 1.144 ships GLSL/worker strings containing \0 octals inside
+  // ` ` template literals. SWC's strict parser (used by `next build`)
+  // rejects them as "Octal escape sequences are not allowed in template
+  // strings" — dev (`next dev`, no minify) never hits this. Transpiling
+  // Cesium through SWC rewrites those escapes to \x00 before minify, which
+  // is the documented fix for Next + Cesium.
+  transpilePackages: ["cesium"],
   webpack: (config) => {
-    // Let Cesium's own workers/shaders pass through untouched; they are
-    // served as static assets from public/cesium, not bundled.
     config.module.unknownContextCritical = false;
+    // Workers are served from public/cesium (copied by postinstall/build),
+    // not resolved through the bundler.
     return config;
   },
-  // Ensure the huge Cesium chunk doesn't get pruned by Render's CDN between
-  // deploys — Next already hashes it, but we must not inline it.
   productionBrowserSourceMaps: false,
 };
 export default nextConfig;

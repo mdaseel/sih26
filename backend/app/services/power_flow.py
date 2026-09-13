@@ -111,8 +111,29 @@ class PowerFlowResult:
 
 
 class PowerFlowService:
+    @staticmethod
+    def _normalize_zip_loads(net) -> None:
+        """Fix feeder_network.json ↔ pandapower ZIP-column drift.
+
+        The validated network was built with 3.4 (split ZIP:
+        const_z_p/q_percent etc.). A 2.14 build expects unified
+        const_z_percent. Rather than reissuing the feeder, translate in-place
+        so either engine version solves identically. This shim is what turned
+        the prod /api/twin 422 ('const_z_percent') into a real solve.
+        """
+        if "const_z_p_percent" in net.load.columns and "const_z_percent" not in net.load.columns:
+            net.load["const_z_percent"] = net.load["const_z_p_percent"]
+            net.load["const_i_percent"] = net.load["const_i_p_percent"]
+        if "const_z_percent" in net.load.columns and "const_z_p_percent" not in net.load.columns:
+            for col in ("const_z_p_percent", "const_i_p_percent", "const_z_q_percent", "const_i_q_percent"):
+                if col not in net.load.columns:
+                    net.load[col] = 0.0
+            net.load["const_z_p_percent"] = net.load["const_z_percent"]
+            net.load["const_i_p_percent"] = net.load["const_i_percent"]
+
     def __init__(self) -> None:
         self._template = pp.from_json(str(paths.FEEDER_NETWORK))
+        self._normalize_zip_loads(self._template)
         self._engine_version = pp.__version__
         # (bus_id, kw) -> CaseMetrics. The BASE case for a bus repeats across
         # every request for that bus, exactly as base_cache did in the dataset
@@ -130,6 +151,7 @@ class PowerFlowService:
     def _run_case(self, bus_id: str, pv_kw: float) -> CaseMetrics:
         """One power flow with pv_kw injected at bus_id. Verbatim solver call."""
         net = copy.deepcopy(self._template)
+        self._normalize_zip_loads(net)
         idx = self._bus_index(net, bus_id)
 
         if pv_kw > 0:
@@ -212,6 +234,7 @@ class PowerFlowService:
         energise them together and solve.
         """
         net = copy.deepcopy(self._template)
+        self._normalize_zip_loads(net)
 
         first_idx = None
         for bus_id, kw in injections.items():

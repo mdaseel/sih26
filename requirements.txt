@@ -22,8 +22,13 @@ supabase==2.15.2
 httpx==0.28.1
 
 # --- Power-flow simulation ---
-pandapower==2.14.11
+# 3.4.0 is the version feeder_network.json was VALIDATED against and that the
+# DOCS prescribe. 2.14 uses const_z_percent (unified ZIP); 3.x uses
+# const_z/p/i_p/q split. A 2.14 build loading a 3.4 network errors on
+# 'const_z_percent' — that was the prod /api/twin 422 you just hit on Render.
+pandapower==3.4.0
 networkx==3.4.2
+scipy==1.13.1
 
 # --- Data / ML ---
 pandas==2.2.3

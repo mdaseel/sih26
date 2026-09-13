@@ -90,7 +90,7 @@ export default function DiscomLayout({ children }: { children: React.ReactNode }
       homeHref="/discom/dashboard"
       email={me?.email ?? null}
       onSignOut={async () => {
-        await supabase.auth.signOut();
+        try { await supabase.auth.signOut(); } catch {}
         router.replace("/login");
       }}
     >

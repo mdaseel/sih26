@@ -102,5 +102,5 @@ export default function VendorLayout({ children }: { children: React.ReactNode }
       </div>
     );
   }
-  return <AppShell links={LINKS} badge="Installer" homeHref="/vendor/dashboard" email={summary?.vendor.business_name ?? me?.email ?? null} onSignOut={async () => { await supabase.auth.signOut(); router.replace("/login"); }}>{children}</AppShell>;
+  return <AppShell links={LINKS} badge="Installer" homeHref="/vendor/dashboard" email={summary?.vendor.business_name ?? me?.email ?? null} onSignOut={async () => { try { await supabase.auth.signOut(); } catch {} router.replace("/login"); }}>{children}</AppShell>;
 }

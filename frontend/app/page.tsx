@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { supabase } from "@/lib/supabase";
 
 const HERO_IMAGE = "/hero-rooftop.jpg";
@@ -54,6 +55,7 @@ export default function Home() {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3">
+            <ThemeToggle compact />
             <Link href="/login" className="hidden text-sm font-medium sm:inline" style={{ color: "rgb(var(--ink-muted))" }}>Sign in</Link>
             <Link href={applyHref} className="rounded-full px-6 py-2.5 text-sm font-bold transition-all active:scale-95 hover:scale-[1.02] hover:shadow-lg" style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))", boxShadow: "0 4px 16px rgb(var(--brand) / 0.3)" }}>{signedIn ? "Dashboard →" : "Apply now →"}</Link>
           </div>
@@ -105,9 +107,9 @@ export default function Home() {
 
         {/* Features — staggered, interactive */}
         <section className="grid gap-4 py-10 sm:grid-cols-3 stagger">
-          <Feature icon="◈" title="Check before you commit" body="Your requested capacity is screened against the local distribution network — ML pre-screen then full power-flow simulation. You know in seconds, not weeks." accent="brand" />
-          <Feature icon="⬢" title="Plan the roof in 3D" body="Place the array on your rooftop, set tilt and bearing, see where the sun falls across the day with real terrain and buildings." accent="accent" />
-          <Feature icon="◎" title="Find a verified installer" body="Only installers the DISCOM has approved, sorted by true road distance from your site. No guesswork, no cold calls." accent="emerald" />
+          <Feature icon="◈" title="Check before you commit" body="Your requested capacity is screened against the local distribution network — ML pre-screen then full power-flow simulation. You know in seconds, not weeks." accent="brand" href="/citizen/scheme" />
+          <Feature icon="⬢" title="Plan the roof in 3D" body="Place the array on your rooftop, set tilt and bearing, see where the sun falls across the day with real terrain and buildings." accent="accent" href={applyHref} />
+          <Feature icon="◎" title="Find a verified installer" body="Only installers the DISCOM has approved, sorted by true road distance from your site. No guesswork, no cold calls." accent="emerald" href="/citizen/vendors" />
         </section>
 
         {/* Trust bar */}
@@ -125,7 +127,7 @@ export default function Home() {
               <h3 className="text-lg font-bold" style={{ color: "rgb(var(--ink))" }}>Ready to see if your roof can host solar?</h3>
               <p className="mt-1 text-sm" style={{ color: "rgb(var(--ink-faint))" }}>Start an application — it takes two minutes and you&apos;ll be screened instantly.</p>
             </div>
-            <Link href={applyHref} className="shrink-0 rounded-full px-8 py-3.5 text-sm font-bold transition-all active:scale-95 hover:scale-[1.02]" style={{ background: "rgb(var(--ink))", color: "white" }}>Start application →</Link>
+            <Link href={applyHref} className="shrink-0 rounded-full px-8 py-3.5 text-sm font-bold transition-all active:scale-95 hover:scale-[1.02] hover:shadow-lg" style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))", boxShadow: "0 4px 16px rgb(var(--brand) / 0.3)" }}>Start application →</Link>
           </div>
         </section>
 
@@ -135,15 +137,15 @@ export default function Home() {
   );
 }
 
-function Feature({ icon, title, body, accent }: { icon: string; title: string; body: string; accent: "brand" | "accent" | "emerald" }) {
+function Feature({ icon, title, body, accent, href }: { icon: string; title: string; body: string; accent: "brand" | "accent" | "emerald"; href: string }) {
   const bg = accent === "brand" ? "rgb(var(--brand))" : accent === "accent" ? "rgb(var(--accent))" : "#10b981";
   return (
-    <div className="card-interactive group">
+    <Link href={href} className="card-interactive group block">
       <div className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold text-white transition-transform group-hover:scale-110 group-hover:rotate-3" style={{ background: bg }}>{icon}</div>
       <h2 className="mt-4 text-[15px] font-bold" style={{ color: "rgb(var(--ink))" }}>{title}</h2>
       <p className="mt-2 text-sm leading-relaxed" style={{ color: "rgb(var(--ink-muted))" }}>{body}</p>
-      <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-1" style={{ color: "rgb(var(--accent-strong))" }}>Learn more →</span>
-    </div>
+      <span className="mt-4 inline-flex items-center gap-1 text-xs font-semibold opacity-60 transition-all group-hover:opacity-100 group-hover:translate-x-1 group-hover:text-[rgb(var(--accent-strong))]" style={{ color: "rgb(var(--ink-faint))" }}>Learn more →</span>
+    </Link>
   );
 }
 function TrustMetric({ value, label, sub }: { value: string; label: string; sub: string }) {

@@ -82,7 +82,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+    const isChat = path.includes("/api/chat");
+    const timeoutMs = isChat ? 70_000 : 12_000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     res = await fetch(`${BASE}${path}`, {
       ...init,
       signal: init.signal ?? controller.signal,
@@ -276,6 +278,27 @@ export const api = {
   /** All 71 bus localities with house counts. */
   localities: () =>
     request<{ buses: Record<string, unknown>[]; count: number }>("/api/grid/localities"),
+
+  /** SolarGrid AI Grid Assistant — NVIDIA NIM via FastAPI. */
+  chat: (payload: {
+    message: string;
+    context?: {
+      page?: string;
+      application_id?: string | null;
+      pv_bus?: string | null;
+      selected_asset_id?: string | null;
+      selected_asset_type?: string | null;
+      assessment_id?: string | null;
+    };
+    history?: { role: string; content: string }[];
+  }) =>
+    request<{
+      reply: string;
+      actions: { type: string; payload: Record<string, unknown> }[];
+      context_used?: Record<string, unknown> | null;
+    }>("/api/chat", { method: "POST", body: JSON.stringify(payload) }),
+
+  chatHealth: () => request<{ nvidia_configured: boolean; nvidia_model: string; status: string }>("/api/chat/health"),
 };
 
 /** DISCOM routes. Every one of these is refused server-side for a citizen. */

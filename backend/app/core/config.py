@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, alias="API_PORT")
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
 
+    # --- NVIDIA NIM (chatbot) ---
+    nvidia_nim_api_key: str = Field(default="", alias="NVIDIA_NIM_API_KEY")
+    nvidia_nim_api_key_alt: str = Field(default="", alias="NVIDIA_NIM_API")
+    nvidia_nim_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1", alias="NVIDIA_NIM_BASE_URL"
+    )
+    nvidia_nim_model: str = Field(
+        default="meta/llama-3.2-11b-vision-instruct", alias="NVIDIA_NIM_MODEL"
+    )
+
     @field_validator(
         "supabase_url",
         "supabase_rest_api",
@@ -62,6 +72,10 @@ class Settings(BaseSettings):
         "supabase_anon_key",
         "supabase_service_role_key",
         "cors_origins",
+        "nvidia_nim_api_key",
+        "nvidia_nim_api_key_alt",
+        "nvidia_nim_base_url",
+        "nvidia_nim_model",
         mode="before",
     )
     @classmethod
@@ -113,6 +127,34 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def nvidia_api_key(self) -> str:
+        if self.nvidia_nim_api_key or self.nvidia_nim_api_key_alt:
+            return self.nvidia_nim_api_key or self.nvidia_nim_api_key_alt
+        # Fallback: developer put the key in frontend/.env.local (common local setup)
+        # Backend .env is authoritative, but we check the frontend file so "it just works" locally.
+        try:
+            from pathlib import Path
+
+            for cand in (REPO_ROOT / "frontend" / ".env.local", REPO_ROOT / ".env.local"):
+                if cand.exists():
+                    for line in cand.read_text(encoding="utf-8", errors="ignore").splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k in ("NVIDIA_NIM_API_KEY", "NVIDIA_NIM_API", "NVIDIA_NIM_APIKEY") and v:
+                            return v
+        except Exception:
+            pass
+        return ""
+
+    @property
+    def nvidia_configured(self) -> bool:
+        return bool(self.nvidia_api_key)
+
     def describe(self) -> dict[str, object]:
         """Config summary safe to log. Never includes key material or passwords."""
         return {
@@ -124,6 +166,9 @@ class Settings(BaseSettings):
             "anon_key_set": bool(self.supabase_anon_key),
             "service_role_key_set": bool(self.supabase_service_role_key),
             "database_url_set": bool(self.database_url),
+            "nvidia_configured": self.nvidia_configured,
+            "nvidia_base_url": self.nvidia_nim_base_url,
+            "nvidia_model": self.nvidia_nim_model,
         }
 
 

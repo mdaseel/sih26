@@ -11,6 +11,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 COPY . .
+# Cesium's Workers/Assets/Widgets must exist in public/ at build time —
+# they are 7 MB of vendor binaries, gitignored, so we generate them here.
+RUN node scripts/copy-cesium-assets.mjs || echo "[cesium] asset copy skipped"
 # NEXT_PUBLIC_* values are inlined at build time, so they must be present here.
 # Only public values: the service-role key is never passed to this stage.
 ARG NEXT_PUBLIC_SUPABASE_URL

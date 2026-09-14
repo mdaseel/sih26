@@ -201,7 +201,7 @@ export function SolarGridAssistant() {
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95"
         style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))", boxShadow: "0 8px 32px rgb(var(--shadow) / 0.22)" }}
       >
-        <span className="text-xl">☀</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       </button>
     );
   }
@@ -228,7 +228,9 @@ export function SolarGridAssistant() {
         style={{ borderColor: "rgb(var(--line))", background: "rgb(var(--panel-raised))" }}
       >
         <div className="flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl text-sm font-black" style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))" }}>☀</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl" style={{ background: "rgb(var(--brand))", color: "rgb(var(--brand-ink))" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </span>
           <div>
             <div className="text-sm font-bold leading-none" style={{ color: "rgb(var(--ink))" }}>SolarGrid AI</div>
             <div className="text-[11px] font-medium" style={{ color: "rgb(var(--ink-faint))" }}>Grid Assistant</div>

@@ -35,21 +35,12 @@ async def lifespan(app: FastAPI):
 
     missing = paths.missing_artifacts()
     if missing:
-        # Without the model or the network there is no product — fail loudly
-        # rather than serving an API that cannot answer anything.
         raise RuntimeError(f"Missing required engineering artifacts: {missing}")
 
-    from app.services.grid_assets import get_grid_asset_service
-    from app.services.ml_prediction import get_ml_service
-    from app.services.power_flow import get_power_flow_service
-
-    grid = get_grid_asset_service()
-    ml = get_ml_service()
-    pf = get_power_flow_service()
-
-    log.info("Model loaded: %s (%d features)", paths.MODEL_V2.name, len(ml.feature_names))
-    log.info("Network loaded: %s", pf.network_summary())
-    log.info("PV-eligible buses: %d", len(grid.eligible_bus_ids()))
+    # Heavy services (ML model 300 trees, pandapower 114-bus network, grid
+    # assets) are loaded LAZILY on first request, not here.  This keeps
+    # /health instant (~2 ms) so UptimeRobot never times out and Render's
+    # cold-start penalty is paid only when a real user hits the API.
 
     if not settings.supabase_configured:
         log.warning(
@@ -57,6 +48,7 @@ async def lifespan(app: FastAPI):
             "persistence and authenticated routes will return 503."
         )
 
+    log.info("Startup complete (services will lazy-load on first request)")
     yield
     log.info("SolarGrid AI shutting down")
 

@@ -83,7 +83,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     const controller = new AbortController();
     const isChat = path.includes("/api/chat");
-    const timeoutMs = isChat ? 70_000 : 12_000;
+    const timeoutMs = isChat ? 70_000 : 30_000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     res = await fetch(`${BASE}${path}`, {
       ...init,

@@ -42,7 +42,10 @@ export default function DiscomLogin() {
           <button type="submit" disabled={busy} className="btn-primary w-full !py-3">{busy?"Signing in…":"Sign in → DISCOM"}</button>
           <p className="text-center text-xs" style={{color:"rgb(var(--ink-faint))"}}>Not DISCOM? <Link href="/login" className="font-semibold hover:underline" style={{color:"rgb(var(--accent-strong))"}}>Citizen</Link> · <Link href="/vendor/login" className="font-semibold hover:underline" style={{color:"rgb(var(--accent-strong))"}}>Vendor</Link></p>
         </form>
-        <div className="mt-4 rounded-xl border p-3 text-xs font-mono" style={{borderColor:"rgb(var(--line))", background:"rgb(var(--panel)/0.8)", color:"rgb(var(--ink-faint))"}}>Demo: demo.discom@solargrid.test / discom123</div>
+        <div className="mt-4 rounded-xl border p-3 text-xs" style={{borderColor:"rgb(var(--line))", background:"rgb(var(--panel)/0.8)", color:"rgb(var(--ink-faint))"}}>
+          <div className="font-semibold" style={{color:"rgb(var(--ink))"}}>Demo credentials</div>
+          <div className="mt-1 font-mono">demo.discom@solargrid.test / abc12345</div>
+        </div>
       </div>
     </div>
   );

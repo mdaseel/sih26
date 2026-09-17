@@ -43,7 +43,10 @@ export default function VendorLogin() {
           <div className="flex justify-center gap-4 text-xs"><Link href="/login" className="hover:underline" style={{color:"rgb(var(--accent-strong))"}}>Citizen login</Link><Link href="/discom/login" className="hover:underline" style={{color:"rgb(var(--accent-strong))"}}>DISCOM login</Link></div>
         </form>
         <p className="mt-4 text-center text-sm" style={{color:"rgb(var(--ink-faint))"}}>New installer? <Link href="/vendor/register" className="hover:underline" style={{color:"#10b981"}}>Register</Link></p>
-        <div className="mt-4 rounded-xl border p-3 text-xs font-mono" style={{borderColor:"rgb(var(--line))", background:"rgb(var(--panel)/0.8)", color:"rgb(var(--ink-faint))"}}>vendor@gmail.com (now VENDOR) / your password<br/>demo.vendor@solargrid.local / vendor123</div>
+        <div className="mt-4 rounded-xl border p-3 text-xs" style={{borderColor:"rgb(var(--line))", background:"rgb(var(--panel)/0.8)", color:"rgb(var(--ink-faint))"}}>
+          <div className="font-semibold" style={{color:"rgb(var(--ink))"}}>Demo credentials</div>
+          <div className="mt-1 font-mono">vendor@gmail.com / vendor@12345</div>
+        </div>
       </div>
     </div>
   );

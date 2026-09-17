@@ -587,15 +587,33 @@ class VendorPortalService:
 
     # ---------------- dashboard ----------------
 
+    _opps_cache: dict[str, Any] = {}
+    _OPPS_TTL = 60  # seconds
+
     def opportunities(self, vendor: dict[str, Any]) -> list[dict[str, Any]]:
         """Per-vendor marketplace: APPROVED apps with nearest routing.
 
-        Ordered nearest-first for this vendor, with is_primary flag for the
-        globally nearest vendor to each application (who sees the blinking
-        highlight). Escalation is time-based: if the primary does not claim
-        within 1 hour, next-nearest is eligible.
+        Uses haversine (straight-line) for nearest-vendor calculation to avoid
+        O(N×M) OSRM API calls. Results are cached for 60 seconds to prevent
+        repeated heavy queries on every 15s poll.
         """
-        from app.services.routing import get_routing_service
+        import math
+        import time
+        from datetime import datetime, timezone
+
+        cache_key = f"opps_{vendor['id']}"
+        now = time.time()
+        cached = self._opps_cache.get(cache_key)
+        if cached and (now - cached["ts"]) < self._OPPS_TTL:
+            return cached["data"]
+
+        def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+            R = 6371.0088
+            p1, p2 = math.radians(lat1), math.radians(lat2)
+            dp = math.radians(lat2 - lat1)
+            dl = math.radians(lon2 - lon1)
+            a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+            return round(2 * R * math.asin(math.sqrt(a)), 3)
 
         try:
             apps = (
@@ -615,9 +633,8 @@ class VendorPortalService:
                 installed_app_ids = {r["application_id"] for r in installs}
             except Exception:
                 pass
-            # Filter unclaimed
             apps = [a for a in apps if a["id"] not in installed_app_ids]
-            # For each app, compute nearest vendor globally to decide primary
+
             try:
                 all_vendors = (
                     db.as_service()
@@ -629,48 +646,48 @@ class VendorPortalService:
                 ).data or []
             except Exception:
                 all_vendors = [vendor]
-            routing = get_routing_service()
+
+            vendor_lat = vendor.get("latitude")
+            vendor_lon = vendor.get("longitude")
+            vendor_id = vendor["id"]
+
             enriched: list[dict[str, Any]] = []
             for a in apps:
                 lat, lon = a.get("latitude"), a.get("longitude")
-                # Distance for this vendor
                 my_dist = None
-                if lat is not None and lon is not None and vendor.get("latitude") is not None:
-                    d = routing.distance(lat, lon, vendor["latitude"], vendor["longitude"])
-                    if d:
-                        my_dist = d.distance_km
-                # Find globally nearest distance
+                if lat is not None and lon is not None and vendor_lat is not None:
+                    my_dist = _haversine_km(lat, lon, vendor_lat, vendor_lon)
+
                 min_dist = my_dist
-                nearest_id = vendor["id"]
+                nearest_id = vendor_id
                 for v in all_vendors:
-                    if v["id"] == vendor["id"]:
+                    if v["id"] == vendor_id:
                         continue
                     if lat is None or v.get("latitude") is None:
                         continue
-                    dd = routing.distance(lat, lon, v["latitude"], v["longitude"])
-                    if dd and (min_dist is None or dd.distance_km < min_dist):
-                        min_dist = dd.distance_km
+                    dd = _haversine_km(lat, lon, v["latitude"], v["longitude"])
+                    if min_dist is None or dd < min_dist:
+                        min_dist = dd
                         nearest_id = v["id"]
-                is_primary = nearest_id == vendor["id"]
-                # Escalation: if app older than 1h and primary hasn't claimed, allow others
-                from datetime import datetime, timezone
+
+                is_primary = nearest_id == vendor_id
                 try:
                     created = datetime.fromisoformat(a["created_at"].replace("Z", "+00:00"))
                     age_h = (datetime.now(timezone.utc) - created).total_seconds() / 3600
                     can_claim = is_primary or age_h > 1.0
                 except Exception:
                     can_claim = True
-                enriched.append(
-                    {
-                        **a,
-                        "distance_km": my_dist,
-                        "is_primary": is_primary,
-                        "should_blink": is_primary,
-                        "can_claim": can_claim,
-                    }
-                )
-            # Nearest-first for this vendor
+
+                enriched.append({
+                    **a,
+                    "distance_km": my_dist,
+                    "is_primary": is_primary,
+                    "should_blink": is_primary,
+                    "can_claim": can_claim,
+                })
+
             enriched.sort(key=lambda x: (x["distance_km"] is None, x["distance_km"] or 9999))
+            self._opps_cache[cache_key] = {"data": enriched, "ts": now}
             return enriched
         except Exception:
             return []

@@ -54,8 +54,8 @@ export default function LoginPage() {
           <p className="text-center text-sm" style={{ color: "rgb(var(--ink-faint))" }}>No citizen account? <Link href="/register" className="font-semibold hover:underline" style={{ color: "rgb(var(--accent-strong))" }}>Register</Link></p>
         </form>
         <div className="mt-4 rounded-xl border p-3 text-xs" style={{ borderColor: "rgb(var(--line))", background: "rgb(var(--panel) / 0.8)" }}>
-          <div className="font-semibold" style={{ color: "rgb(var(--ink))" }}>Demo citizen</div>
-          <div className="mt-1 font-mono" style={{ color: "rgb(var(--ink-faint))" }}>demo.citizen@solargrid.local / citizen123</div>
+          <div className="font-semibold" style={{ color: "rgb(var(--ink))" }}>Demo credentials</div>
+          <div className="mt-1 font-mono" style={{ color: "rgb(var(--ink-faint))" }}>mohamedaaris019@gmail.com / Aaris@2617</div>
         </div>
       </div>
     </div>

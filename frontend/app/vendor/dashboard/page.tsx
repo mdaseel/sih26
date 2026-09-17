@@ -12,20 +12,20 @@ export default function VendorDashboard() {
   const [notice, setNotice] = useState<string | null>(null);
   const [ratings, setRatings] = useState<{ average: number | null; count: number; reviews: { rating: number; tags: string[]; comment: string | null; created_at: string }[] } | null>(null);
   const load = useCallback(async () => {
-    const [s, l, o] = await Promise.allSettled([vendorApi.summary(), vendorApi.leads(), vendorApi.opportunities().catch(() => [] as Opp[])]);
+    const [s, l, o] = await Promise.allSettled([vendorApi.summary(), vendorApi.leads(), vendorApi.opportunities()]);
     if (s.status === "fulfilled") setSummary(s.value as VendorSummary); else setError((s.reason as ApiError).message);
     if (l.status === "fulfilled") setLeads(l.value as Lead[]);
     if (o.status === "fulfilled") setOpps(o.value as Opp[]);
     vendorApi.myRatings().then(setRatings).catch(() => {});
   }, []);
-  useEffect(() => { load(); const id = setInterval(load, 15000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { load(); const id = setInterval(load, 30000); return () => clearInterval(id); }, [load]);
   const newLeads = leads.filter((l) => ["REQUESTED","RESCHEDULED"].includes(l.status));
   async function claim(id: string) {
     try { await vendorApi.claimOpportunity(id); clearApiCache(); setNotice("Claimed — check Projects & Installations"); await load(); } catch (e) { setError((e as ApiError).message); }
   }
   return (
     <div className="space-y-6">
-      <div className="animate-slide-up"><h1 className="text-2xl font-bold tracking-tight" style={{ color: "rgb(var(--ink))" }}>{summary?.vendor.business_name ?? "Dashboard"}</h1><p className="mt-1 text-sm" style={{ color: "rgb(var(--ink-faint))" }}>Per-vendor feed — nearest opportunities blink. Auto-refreshed every 15s.</p></div>
+      <div className="animate-slide-up"><h1 className="text-2xl font-bold tracking-tight" style={{ color: "rgb(var(--ink))" }}>{summary?.vendor.business_name ?? "Dashboard"}</h1><p className="mt-1 text-sm" style={{ color: "rgb(var(--ink-faint))" }}>Per-vendor feed — nearest opportunities blink. Auto-refreshed every 30s.</p></div>
       {notice && <div className="rounded-xl border p-3 text-sm" style={{ borderColor: "rgb(34 197 94 / 0.3)", background: "rgb(220 252 231)", color: "rgb(22 101 52)" }}>{notice}</div>}
       {error && <p className="rounded-xl border p-3 text-sm" style={{ borderColor: "rgb(220 38 38 / 0.3)", background: "rgb(254 226 226)", color: "rgb(153 27 27)" }}>{error}</p>}
       {summary && !summary.vendor.visible_to_customers && <div className="rounded-xl border p-4 text-sm" style={{ borderColor: "rgb(245 158 11 / 0.3)", background: "rgb(254 243 199)", color: "rgb(146 64 14)" }}>Your business is <b>{summary.vendor.status}</b> and is not visible to customers yet.</div>}

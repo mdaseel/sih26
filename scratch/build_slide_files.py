@@ -1,0 +1,483 @@
+import os
+import sys
+import json
+import asyncio
+from playwright.async_api import async_playwright
+import pptx
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
+
+SVG_CONTENT = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3840 2160" width="3840" height="2160" style="background: #070d19; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b172a" />
+      <stop offset="50%" stop-color="#070d19" />
+      <stop offset="100%" stop-color="#040810" />
+    </linearGradient>
+    
+    <linearGradient id="heroCardBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f2342" />
+      <stop offset="100%" stop-color="#0b172a" />
+    </linearGradient>
+    
+    <linearGradient id="heroBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+    
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#111c33" />
+      <stop offset="100%" stop-color="#0d1526" />
+    </linearGradient>
+    
+    <linearGradient id="techStackBg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0e1726" />
+      <stop offset="50%" stop-color="#15233b" />
+      <stop offset="100%" stop-color="#0e1726" />
+    </linearGradient>
+    
+    <linearGradient id="accentBlue" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+
+    <linearGradient id="accentGreen" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#059669" />
+      <stop offset="100%" stop-color="#34d399" />
+    </linearGradient>
+
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="3840" height="2160" fill="url(#bgGlow)" />
+
+  <!-- Grid overlay lines for technical aesthetic -->
+  <g stroke="#ffffff" stroke-opacity="0.03" stroke-width="2">
+    <line x1="0" y1="200" x2="3840" y2="200" />
+    <line x1="0" y1="1920" x2="3840" y2="1920" />
+    <line x1="120" y1="0" x2="120" y2="2160" />
+    <line x1="3720" y1="0" x2="3720" y2="2160" />
+  </g>
+
+  <!-- ==================== HEADER ==================== -->
+  <g id="Header" transform="translate(120, 80)">
+    <!-- SIH & Project Branding -->
+    <rect x="0" y="0" width="3600" height="120" rx="16" fill="#0f1b2d" stroke="#1e2d4a" stroke-width="2" />
+    
+    <!-- Title -->
+    <text x="40" y="70" font-size="44" font-weight="900" fill="#ffffff" letter-spacing="2">TECHNICAL APPROACH &amp; SYSTEM ARCHITECTURE</text>
+    <text x="1120" y="70" font-size="28" font-weight="600" fill="#38bdf8">SolarGrid AI</text>
+    <text x="1300" y="70" font-size="24" font-weight="400" fill="#94a3b8">| Physics-First Rooftop Solar Screening &amp; Grid Integration Platform</text>
+    
+    <!-- SIH 2026 Tag -->
+    <rect x="3180" y="25" width="380" height="70" rx="35" fill="url(#accentBlue)" />
+    <text x="3370" y="70" font-size="24" font-weight="800" fill="#ffffff" text-anchor="middle">SIH 2026 TOP SOLUTION</text>
+  </g>
+
+  <!-- ==================== FLOW CONNECTORS (ARROWS) ==================== -->
+  <!-- Arrow marker definition -->
+  <svg>
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8" />
+      </marker>
+      <marker id="arrowGreen" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+      </marker>
+    </defs>
+  </svg>
+
+  <!-- Connector Lines -->
+  <!-- Col 1 to Col 2 -->
+  <path d="M 780 500 L 910 500" stroke="#38bdf8" stroke-width="5" fill="none" marker-end="url(#arrow)" />
+  <text x="845" y="475" font-size="18" fill="#94a3b8" text-anchor="middle" font-weight="600">Grid Data &amp; kW</text>
+
+  <!-- Col 2 ML to PowerFlow -->
+  <path d="M 1500 550 L 1500 620" stroke="#38bdf8" stroke-width="4" stroke-dasharray="8,6" fill="none" marker-end="url(#arrow)" />
+  <text x="1620" y="590" font-size="18" fill="#f59e0b" font-weight="600">ML Pre-screen Verdict</text>
+
+  <!-- Col 2 PowerFlow to Risk Assessment -->
+  <path d="M 1500 870 L 1500 940" stroke="#34d399" stroke-width="5" fill="none" marker-end="url(#arrowGreen)" />
+  <text x="1640" y="910" font-size="18" fill="#34d399" font-weight="700">Exact V, Loading, Losses</text>
+
+  <!-- Col 2 to Col 3 (Hosting Cap & Digital Twin) -->
+  <path d="M 2080 770 L 2210 500" stroke="#38bdf8" stroke-width="5" fill="none" marker-end="url(#arrow)" />
+  <text x="2140" y="610" font-size="18" fill="#94a3b8" text-anchor="middle" font-weight="600">Bisection Solves</text>
+
+  <path d="M 2080 1040 L 2210 800" stroke="#38bdf8" stroke-width="5" fill="none" marker-end="url(#arrow)" />
+  <text x="2140" y="930" font-size="18" fill="#94a3b8" text-anchor="middle" font-weight="600">Topology &amp; V pu</text>
+
+  <!-- Verdict to Backend API -->
+  <path d="M 1500 1200 L 1500 1270" stroke="#38bdf8" stroke-width="5" fill="none" marker-end="url(#arrow)" />
+  <text x="1500" y="1245" font-size="18" fill="#94a3b8" text-anchor="middle" font-weight="600">Verified Verdict</text>
+
+  <!-- Backend API to Portals -->
+  <path d="M 1500 1470 L 1500 1530" stroke="#38bdf8" stroke-width="5" fill="none" marker-end="url(#arrow)" />
+
+  <!-- ==================== COLUMN 1: DATA SOURCES & GRID ASSETS ==================== -->
+  <g id="Col1_DataSources" transform="translate(120, 240)">
+    <rect width="660" height="960" rx="20" fill="url(#cardBg)" stroke="#1e2d4a" stroke-width="3" filter="url(#cardShadow)" />
+    
+    <!-- Stage Header -->
+    <rect x="0" y="0" width="660" height="80" rx="20" fill="#172642" />
+    <circle cx="50" cy="40" r="22" fill="#0284c7" />
+    <text x="50" y="48" font-size="24" font-weight="900" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="90" y="48" font-size="26" font-weight="800" fill="#ffffff">INPUT DATA &amp; GRID ASSETS</text>
+    
+    <!-- Sub-card 1: Consumer Connection Request -->
+    <g transform="translate(30, 110)">
+      <rect width="600" height="240" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">⚡ Consumer Solar Request</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• Target Bus ID: <tspan fill="#ffffff" font-weight="700">pv_bus (71 Eligible Buses)</tspan></text>
+      <text x="30" y="125" font-size="19" fill="#cbd5e1">• Proposed Solar Capacity: <tspan fill="#ffffff" font-weight="700">new_pv_kw (5–250 kW)</tspan></text>
+      <text x="30" y="165" font-size="19" fill="#cbd5e1">• Existing Solar Capacity: <tspan fill="#ffffff" font-weight="700">existing_pv_kw (0–15 kW)</tspan></text>
+      <text x="30" y="205" font-size="19" fill="#cbd5e1">• Location: <tspan fill="#ffffff" font-weight="700">GIS Coordinates / Household Mapping</tspan></text>
+    </g>
+
+    <!-- Sub-card 2: Distribution Grid Feeder Model -->
+    <g transform="translate(30, 380)">
+      <rect width="600" height="260" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">🌐 Distribution Grid Network Model</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• Network Specification: <tspan fill="#ffffff" font-weight="700">IEEE Test Feeder</tspan></text>
+      <text x="30" y="125" font-size="19" fill="#cbd5e1">• Feeder Configuration: <tspan fill="#ffffff" font-weight="700">feeder_network.json</tspan></text>
+      <text x="30" y="165" font-size="19" fill="#cbd5e1">• Grid Assets: <tspan fill="#ffffff" font-weight="700">114 Buses · 40 Lines · 30 Transformers</tspan></text>
+      <text x="30" y="205" font-size="19" fill="#cbd5e1">• Operating Voltage: <tspan fill="#ffffff" font-weight="700">4.16 kV / 12.47 kV Distribution</tspan></text>
+      <text x="30" y="235" font-size="16" fill="#64748b">Verified via build_feeder.py against IEEE reference</text>
+    </g>
+
+    <!-- Sub-card 3: Electrical Database & Pre-computed Features -->
+    <g transform="translate(30, 670)">
+      <rect width="600" height="250" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">📊 Pre-computed Feature Datasets</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• Eligible PV Buses: <tspan fill="#ffffff" font-weight="700">valid_pv_buses.csv</tspan></text>
+      <text x="30" y="125" font-size="19" fill="#cbd5e1">• Electrical Impendance: <tspan fill="#ffffff" font-weight="700">electrical_features.csv</tspan></text>
+      <text x="30" y="165" font-size="19" fill="#cbd5e1">• Upstream Impendance: <tspan fill="#ffffff" font-weight="700">upstream_r, x, z (ohms)</tspan></text>
+      <text x="30" y="205" font-size="19" fill="#cbd5e1">• Distance &amp; Transformer: <tspan fill="#ffffff" font-weight="700">feeder_distance_km, sn_kva</tspan></text>
+    </g>
+  </g>
+
+  <!-- ==================== COLUMN 2: HERO SECTION — AI PRE-SCREEN & PHYSICS ENGINE ==================== -->
+  <g id="Col2_CoreEngine" transform="translate(910, 240)">
+    <!-- Hero Box Background with Cyan Glowing Border -->
+    <rect width="1170" height="960" rx="24" fill="url(#heroCardBg)" stroke="url(#heroBorder)" stroke-width="4" filter="url(#glow)" />
+    
+    <!-- Stage Header -->
+    <rect x="0" y="0" width="1170" height="90" rx="24" fill="#0f2b52" />
+    <circle cx="60" cy="45" r="26" fill="#38bdf8" />
+    <text x="60" y="54" font-size="28" font-weight="900" fill="#070d19" text-anchor="middle">2</text>
+    <text x="110" y="55" font-size="28" font-weight="900" fill="#ffffff">HERO CORE INNOVATION: DUAL-LAYER AI PRE-SCREEN &amp; PHYSICS ENGINE</text>
+    <rect x="940" y="25" width="200" height="40" rx="20" fill="#059669" />
+    <text x="1040" y="51" font-size="18" font-weight="800" fill="#ffffff" text-anchor="middle">PHYSICS DECIDES</text>
+
+    <!-- Sub-module 1: ML Pre-screening Layer -->
+    <g transform="translate(40, 120)">
+      <rect width="1090" height="230" rx="16" fill="#0b172a" stroke="#1e3a66" stroke-width="2" />
+      <rect x="30" y="20" width="220" height="36" rx="8" fill="#0284c7" />
+      <text x="140" y="44" font-size="18" font-weight="800" fill="#ffffff" text-anchor="middle">FAST PRE-SCREEN (ms)</text>
+      <text x="270" y="45" font-size="22" font-weight="800" fill="#38bdf8">🤖 18-Feature Random Forest ML Model</text>
+      <text x="860" y="45" font-size="18" font-weight="700" fill="#a7f3d0">Model: suryagrid_model_v2.pkl</text>
+
+      <text x="30" y="95" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Feature Vector (18 Inputs):</tspan> pv_bus, total_pv_kw, new_pv_kw, base_voltage_pu, feeder_distance_km, upstream_r_x_z, transformer_sn_kva, load_to_transformer_ratio, pv_penetration_ratio</text>
+      <text x="30" y="135" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Architecture:</tspan> Scikit-Learn Pipeline (OneHotEncoder + StandardScaler + RandomForestClassifier)</text>
+      <text x="30" y="175" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Outputs:</tspan> Instant Risk Class (<tspan fill="#34d399" font-weight="700">SAFE</tspan> / <tspan fill="#fbbf24" font-weight="700">CAUTION</tspan> / <tspan fill="#f87171" font-weight="700">CONSTRAINED</tspan>) + Class Probabilities</text>
+      <text x="30" y="205" font-size="16" fill="#64748b">Zero Data Leakage: ML model sees NO simulation metrics (voltage/loading)</text>
+    </g>
+
+    <!-- Sub-module 2: Deterministic Power Flow Physics Engine -->
+    <g transform="translate(40, 380)">
+      <rect width="1090" height="270" rx="16" fill="#07182e" stroke="#059669" stroke-width="3" />
+      <rect x="30" y="20" width="260" height="36" rx="8" fill="#059669" />
+      <text x="160" y="44" font-size="18" font-weight="800" fill="#ffffff" text-anchor="middle">PHYSICS AUTHORITY (~50 ms)</text>
+      <text x="310" y="45" font-size="22" font-weight="800" fill="#34d399">⚡ Deterministic pandapower Newton-Raphson Solver</text>
+
+      <text x="30" y="95" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Methodology:</tspan> BASE Case (Existing PV) vs. PV Case (Existing + New PV) Differential Power Flow</text>
+      <text x="30" y="135" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Physical Measurements:</tspan> Feeder Vmin/Vmax (pu), Target Bus Voltage Rise ΔV (pu), Line Loading (%), Transformer Loading (%)</text>
+      <text x="30" y="175" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Reverse Flow Detection:</tspan> Identifies active power reversal (P &lt; 0) back to substation transformer</text>
+      <text x="30" y="215" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">System Loss Calculation:</tspan> Computes baseline power loss vs. delta active power losses (kW)</text>
+      <text x="30" y="245" font-size="16" fill="#64748b">Exact physical solver call: pp.runpp(net, algorithm='nr', max_iteration=500, tol=1e-3)</text>
+    </g>
+
+    <!-- Sub-module 3: Domain Risk Assessment Engine -->
+    <g transform="translate(40, 680)">
+      <rect width="1090" height="240" rx="16" fill="#0b172a" stroke="#1e3a66" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#fbbf24">⚖️ Domain Risk Assessment &amp; Discrepancy Gate</text>
+      <text x="800" y="45" font-size="18" font-weight="700" fill="#94a3b8">Config: scenario_config.json</text>
+
+      <!-- Rules breakdown -->
+      <g transform="translate(30, 70)">
+        <!-- Hard CONSTRAINED Box -->
+        <rect x="0" y="0" width="330" height="140" rx="10" fill="#2d1215" stroke="#f87171" stroke-width="2" />
+        <text x="15" y="30" font-size="18" font-weight="800" fill="#f87171">🔴 CONSTRAINED (Hard Rules)</text>
+        <text x="15" y="60" font-size="15" fill="#fca5a5">• Max V &gt; 1.05 pu  | Min V &lt; 0.90 pu</text>
+        <text x="15" y="85" font-size="15" fill="#fca5a5">• Voltage Rise |ΔV| &gt; 0.05 pu</text>
+        <text x="15" y="110" font-size="15" fill="#fca5a5">• Line Loading &gt; 100% | Trafo &gt; 100%</text>
+
+        <!-- CAUTION Box -->
+        <rect x="360" y="0" width="330" height="140" rx="10" fill="#2a1f0d" stroke="#fbbf24" stroke-width="2" />
+        <text x="375" y="30" font-size="18" font-weight="800" fill="#fbbf24">🟡 CAUTION (Caution Bands)</text>
+        <text x="375" y="60" font-size="15" fill="#fde68a">• Max V &gt; 1.03 pu  | |ΔV| ≥ 0.03 pu</text>
+        <text x="375" y="85" font-size="15" fill="#fde68a">• Line Load ≥ 80%  | Trafo ≥ 95%</text>
+        <text x="375" y="110" font-size="15" fill="#fde68a">• Reverse Power Flow Detected</text>
+
+        <!-- SAFE Box -->
+        <rect x="720" y="0" width="310" height="140" rx="10" fill="#0d281e" stroke="#34d399" stroke-width="2" />
+        <text x="735" y="30" font-size="18" font-weight="800" fill="#34d399">🟢 SAFE (Normal Limits)</text>
+        <text x="735" y="60" font-size="15" fill="#a7f3d0">• All voltages within 0.90–1.03 pu</text>
+        <text x="735" y="85" font-size="15" fill="#a7f3d0">• Rise &lt; 0.03 pu | Load &lt; 80%</text>
+        <text x="735" y="110" font-size="15" fill="#a7f3d0">• No reverse power flow</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ==================== COLUMN 3: HOSTING CAPACITY & DIGITAL TWIN ==================== -->
+  <g id="Col3_CapacityTwin" transform="translate(2210, 240)">
+    <rect width="660" height="960" rx="20" fill="url(#cardBg)" stroke="#1e2d4a" stroke-width="3" filter="url(#cardShadow)" />
+    
+    <!-- Stage Header -->
+    <rect x="0" y="0" width="660" height="80" rx="20" fill="#172642" />
+    <circle cx="50" cy="40" r="22" fill="#0284c7" />
+    <text x="50" y="48" font-size="24" font-weight="900" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="90" y="48" font-size="25" font-weight="800" fill="#ffffff">CAPACITY ENGINE &amp; DIGITAL TWIN</text>
+
+    <!-- Sub-card 1: Hosting Capacity Bisection Solver -->
+    <g transform="translate(30, 110)">
+      <rect width="600" height="260" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">📈 Bisection Hosting Capacity Solver</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Binary Bisection Algorithm:</tspan> Solves ~11 power flow runs per bus to find exact max allowable solar kW</text>
+      <text x="30" y="145" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Per-Bus Capacity:</tspan> Evaluates single-bus injection limits</text>
+      <text x="30" y="185" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Feeder-Section Capacity:</tspan> Evaluates simultaneous section injection (prevents 23× overestimation error)</text>
+      <text x="30" y="230" font-size="16" fill="#64748b">Service: HostingCapacityService.py</text>
+    </g>
+
+    <!-- Sub-card 2: 2D & 3D Digital Twin Visualisation -->
+    <g transform="translate(30, 390)">
+      <rect width="600" height="270" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">🌐 2D / 3D Grid Digital Twin</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">2D Single Line Diagram:</tspan> Exact electrical graph topology rendering via TwinDiagram.tsx (respect_switches=True)</text>
+      <text x="30" y="145" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">3D Geospatial Twin:</tspan> CesiumJS 3D viewer (GridTwin3D.tsx) with fly-to camera controls &amp; voltage heatmaps</text>
+      <text x="30" y="205" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">2D GIS Map:</tspan> Leaflet map (GridMap.tsx) with distance-scaled bus placement</text>
+    </g>
+
+    <!-- Sub-card 3: Multi-Agent AI Grid Assistant -->
+    <g transform="translate(30, 680)">
+      <rect width="600" height="240" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">💬 Multi-Agent AI Grid Assistant</text>
+      <text x="30" y="85" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">NVIDIA NIM Integration:</tspan> LLM Grid Assistant (ai_assistant.py) for citizen &amp; DISCOM support</text>
+      <text x="30" y="145" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Strict Tool Grounding:</tspan> Answers derived exclusively from pandapower &amp; grid database (Zero hallucination)</text>
+      <text x="30" y="205" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Natural Language Explanation:</tspan> Explains complex voltage/loading constraints</text>
+    </g>
+  </g>
+
+  <!-- ==================== STAGE 4: BACKEND & DATABASE LAYER ==================== -->
+  <g id="Stage4_Backend" transform="translate(2900, 240)">
+    <rect width="820" height="960" rx="20" fill="url(#cardBg)" stroke="#1e2d4a" stroke-width="3" filter="url(#cardShadow)" />
+    
+    <!-- Stage Header -->
+    <rect x="0" y="0" width="820" height="80" rx="20" fill="#172642" />
+    <circle cx="50" cy="40" r="22" fill="#0284c7" />
+    <text x="50" y="48" font-size="24" font-weight="900" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="90" y="48" font-size="25" font-weight="800" fill="#ffffff">REST API &amp; SECURE STORAGE</text>
+
+    <!-- Sub-card 1: FastAPI Service Layer -->
+    <g transform="translate(30, 110)">
+      <rect width="760" height="390" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#38bdf8">🚀 FastAPI Server &amp; Endpoint Routers</text>
+      <text x="30" y="90" font-size="19" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">51 API Endpoints</tspan> across 6 modular routers:</text>
+      <text x="50" y="130" font-size="18" fill="#94a3b8">1. routes.py — Applications &amp; Assessment (/api/assess)</text>
+      <text x="50" y="165" font-size="18" fill="#94a3b8">2. routes_discom.py — DISCOM Queue &amp; Feeder Analytics</text>
+      <text x="50" y="200" font-size="18" fill="#94a3b8">3. routes_vendors.py — Vendor Discovery &amp; Matching</text>
+      <text x="50" y="235" font-size="18" fill="#94a3b8">4. routes_vendor_portal.py — Site Visit &amp; Verification</text>
+      <text x="50" y="270" font-size="18" fill="#94a3b8">5. routes_assistant.py — AI Grid Assistant Chat</text>
+      <text x="50" y="305" font-size="18" fill="#94a3b8">6. routes_scheme.py — PM Surya Ghar Subsidy Calculator</text>
+      <text x="30" y="355" font-size="18" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Security Middleware:</tspan> JWT Authentication + Per-process Rate Limiting</text>
+    </g>
+
+    <!-- Sub-card 2: Supabase Postgres & RLS Security -->
+    <g transform="translate(30, 520)">
+      <rect width="760" height="400" rx="14" fill="#0e1726" stroke="#253859" stroke-width="2" />
+      <text x="30" y="45" font-size="22" font-weight="800" fill="#34d399">🔒 Database &amp; Row Level Security (RLS)</text>
+      <text x="30" y="95" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Supabase Postgres Database:</tspan> 13 Relational Tables + 6 DB Migrations</text>
+      <text x="30" y="145" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Row Level Security (RLS):</tspan> 29 Enforced Security Policies</text>
+      <text x="30" y="195" font-size="19" fill="#f87171">• <tspan fill="#ffffff" font-weight="700">Zero Client Write Security:</tspan> simulation_results &amp; risk_assessments have NO client write policy — written ONLY via service role</text>
+      <text x="30" y="255" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Column-Level REVOKE Protection:</tspan> Prevents privilege escalation (role self-promotion) &amp; unauthorized vendor verification</text>
+      <text x="30" y="315" font-size="19" fill="#cbd5e1">• <tspan fill="#ffffff" font-weight="700">Audit &amp; File Storage:</tspan> Secure document uploads with magic byte validation &amp; 5-minute signed URLs</text>
+    </g>
+  </g>
+
+  <!-- ==================== STAGE 5: MULTI-STAKEHOLDER PORTALS & OUTPUTS ==================== -->
+  <g id="Stage5_Portals" transform="translate(120, 1240)">
+    <rect width="3600" height="290" rx="20" fill="url(#cardBg)" stroke="#1e2d4a" stroke-width="3" filter="url(#cardShadow)" />
+    
+    <!-- Stage Header -->
+    <rect x="0" y="0" width="3600" height="65" rx="20" fill="#172642" />
+    <circle cx="45" cy="32" r="18" fill="#0284c7" />
+    <text x="45" y="39" font-size="20" font-weight="900" fill="#ffffff" text-anchor="middle">5</text>
+    <text x="80" y="41" font-size="23" font-weight="800" fill="#ffffff">MULTI-STAKEHOLDER USER PORTALS &amp; FINAL SYSTEM OUTPUTS</text>
+
+    <!-- Portal 1: Citizen Portal -->
+    <g transform="translate(30, 85)">
+      <rect width="1160" height="180" rx="14" fill="#0e1726" stroke="#0284c7" stroke-width="2" />
+      <text x="25" y="40" font-size="22" font-weight="800" fill="#38bdf8">👤 CITIZEN PORTAL (Rooftop Solar Applicant)</text>
+      <text x="25" y="80" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Instant Pre-Screening:</tspan> Feasibility check in milliseconds before filing</text>
+      <text x="25" y="115" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Application Tracker:</tspan> Live tracking (APPLIED → APPROVED → INSTALLED → VERIFIED)</text>
+      <text x="25" y="150" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">PM Surya Ghar Subsidy Estimator:</tspan> Central Financial Assistance (CFA) calculation</text>
+    </g>
+
+    <!-- Portal 2: DISCOM Control Room -->
+    <g transform="translate(1220, 85)">
+      <rect width="1160" height="180" rx="14" fill="#0e1726" stroke="#059669" stroke-width="2" />
+      <text x="25" y="40" font-size="22" font-weight="800" fill="#34d399">🏢 DISCOM CONTROL ROOM (Grid Engineer)</text>
+      <text x="25" y="80" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Application Queue Review:</tspan> Approval, Engineering Review &amp; Rejection Workflow</text>
+      <text x="25" y="115" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Power Flow Inspector:</tspan> Deep physical metrics (Vmin/max, ΔV rise, Line/Trafo loading)</text>
+      <text x="25" y="150" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Interactive Tools:</tspan> 2D/3D Grid Digital Twin, Hosting Capacity Heatmap &amp; What-If Simulator</text>
+    </g>
+
+    <!-- Portal 3: Vendor & Verification Portal -->
+    <g transform="translate(2410, 85)">
+      <rect width="1160" height="180" rx="14" fill="#0e1726" stroke="#fbbf24" stroke-width="2" />
+      <text x="25" y="40" font-size="22" font-weight="800" fill="#fbbf24">🔧 VENDOR &amp; INSTALLATION PORTAL (Solar Installer)</text>
+      <text x="25" y="80" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Verified Lead Management:</tspan> Citizen application matching &amp; appointment scheduling</text>
+      <text x="25" y="115" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Site Visit Scheduler:</tspan> Inspection booking &amp; technical feasibility recording</text>
+      <text x="25" y="150" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#ffffff">Completion Filing:</tspan> Installation report with 6-point checklist &amp; photo verification</text>
+    </g>
+  </g>
+
+  <!-- ==================== STAGE 6: PLANNED / FUTURE MODULES ==================== -->
+  <g id="Stage6_Future" transform="translate(120, 1560)">
+    <rect width="3600" height="120" rx="16" fill="#0e1626" stroke="#475569" stroke-width="2" stroke-dasharray="10,6" />
+    <text x="30" y="40" font-size="20" font-weight="800" fill="#94a3b8">🚀 PLANNED EXTENSIONS &amp; SCADA INTEGRATION [FUTURE MODULES]</text>
+    <text x="30" y="85" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#38bdf8">Live SCADA / AMI Feeds:</tspan> Dynamic Smart Meter Telemetry Ingestion</text>
+    <text x="950" y="85" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#38bdf8">Time-Series Profiles:</tspan> Seasonal Load Curve Simulations</text>
+    <text x="1800" y="85" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#38bdf8">Satellite Irradiance:</tspan> Google Earth Engine / CAMS Live Feed</text>
+    <text x="2700" y="85" font-size="18" fill="#cbd5e1">• <tspan font-weight="700" fill="#38bdf8">HIL Microgrid Testbed:</tspan> Hardware-in-the-Loop Validation</text>
+  </g>
+
+  <!-- ==================== BOTTOM PANEL: TECHNOLOGY STACK ==================== -->
+  <g id="TechStack" transform="translate(120, 1710)">
+    <rect width="3600" height="230" rx="20" fill="url(#techStackBg)" stroke="#1e3a66" stroke-width="3" filter="url(#cardShadow)" />
+    
+    <!-- Title -->
+    <rect x="30" y="20" width="220" height="40" rx="10" fill="#0284c7" />
+    <text x="140" y="47" font-size="22" font-weight="900" fill="#ffffff" text-anchor="middle">TECH STACK</text>
+    <text x="270" y="47" font-size="20" font-weight="700" fill="#94a3b8">Technologies &amp; Frameworks Implemented in Repository</text>
+
+    <!-- Stack Categories -->
+    <!-- AI / ML -->
+    <g transform="translate(30, 80)">
+      <rect width="560" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#38bdf8">AI / MACHINE LEARNING</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">Scikit-Learn 1.3.2 · Random Forest</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">NumPy · Pandas · NVIDIA NIM LLM</text>
+    </g>
+
+    <!-- Physics Engine -->
+    <g transform="translate(620, 80)">
+      <rect width="560" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#34d399">PHYSICS &amp; GRID ENGINE</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">pandapower 3.4.0 · Newton-Raphson</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">NetworkX · IEEE Comprehensive Feeder</text>
+    </g>
+
+    <!-- Backend & Security -->
+    <g transform="translate(1210, 80)">
+      <rect width="570" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#fbbf24">BACKEND &amp; SECURITY</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">FastAPI · Python 3.12 · Uvicorn</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">Supabase Postgres · 29 RLS Policies</text>
+    </g>
+
+    <!-- Frontend & 3D -->
+    <g transform="translate(1810, 80)">
+      <rect width="570" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#38bdf8">FRONTEND &amp; VISUALISATION</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">Next.js 14 · React 18 · TypeScript</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">CesiumJS (3D) · Leaflet (2D) · Tailwind</text>
+    </g>
+
+    <!-- DevOps & Deployment -->
+    <g transform="translate(2410, 80)">
+      <rect width="570" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#a7f3d0">DEVOPS &amp; TESTING</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">Docker · Docker Compose · Render</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">Pytest (39 tests) · Vitest (16 tests)</text>
+    </g>
+
+    <!-- Database & Storage -->
+    <g transform="translate(3010, 80)">
+      <rect width="560" height="125" rx="12" fill="#0d182b" stroke="#1e2d4a" stroke-width="2" />
+      <text x="20" y="35" font-size="19" font-weight="800" fill="#f472b6">DATABASE &amp; STORAGE</text>
+      <text x="20" y="70" font-size="17" font-weight="700" fill="#ffffff">PostgreSQL (13 Tables)</text>
+      <text x="20" y="100" font-size="16" fill="#cbd5e1">Supabase Storage · Magic-byte Validation</text>
+    </g>
+  </g>
+</svg>
+"""
+
+async def generate_png_and_svg():
+    svg_path = os.path.abspath("TECHNICAL_APPROACH.svg")
+    png_path = os.path.abspath("TECHNICAL_APPROACH.png")
+    
+    with open(svg_path, "w", encoding="utf-8") as f:
+        f.write(SVG_CONTENT)
+    print(f"Saved SVG to {svg_path}")
+
+    # Use Playwright to render SVG/HTML to 3840x2160 PNG
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page(viewport={"width": 3840, "height": 2160})
+        
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<style>
+  html, body {{ margin: 0; padding: 0; background: #070d19; width: 3840px; height: 2160px; overflow: hidden; }}
+</style>
+</head>
+<body>
+{SVG_CONTENT}
+</body>
+</html>"""
+        
+        await page.set_content(html_content)
+        await page.screenshot(path=png_path, full_page=True)
+        await browser.close()
+        print(f"Rendered 3840x2160 PNG to {png_path}")
+
+def generate_pptx():
+    pptx_path = os.path.abspath("TECHNICAL_APPROACH.pptx")
+    prs = pptx.Presentation()
+    prs.slide_width = Inches(13.333)  # 16:9 widescreen
+    prs.slide_height = Inches(7.5)
+    
+    blank_layout = prs.slide_layouts[6]
+    slide = prs.slides.add_slide(blank_layout)
+    
+    # Background
+    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, Inches(13.333), Inches(7.5))
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = RGBColor(7, 13, 25)
+    bg.line.color.rgb = RGBColor(7, 13, 25)
+
+    # If PNG exists, place PNG onto PPTX slide so it's a presentation slide
+    png_path = os.path.abspath("TECHNICAL_APPROACH.png")
+    if os.path.exists(png_path):
+        slide.shapes.add_picture(png_path, 0, 0, Inches(13.333), Inches(7.5))
+        
+    prs.save(pptx_path)
+    print(f"Saved PPTX to {pptx_path}")
+
+if __name__ == "__main__":
+    asyncio.run(generate_png_and_svg())
+    generate_pptx()

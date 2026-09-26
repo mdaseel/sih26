@@ -13,7 +13,6 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
 
 from app.api.routes import router
 from app.api.routes_assistant import router as assistant_router
@@ -91,10 +90,10 @@ app.include_router(vendor_portal_router)
 app.include_router(scheme_router)
 
 
-@app.get("/ping", tags=["meta"], response_class=PlainTextResponse)
-def ping() -> str:
+@app.get("/ping", tags=["meta"])
+def ping() -> dict[str, str]:
     """Constant-time liveness probe for hosts and external uptime monitors."""
-    return "pong"
+    return {"status": "ok"}
 
 
 @app.get("/health", tags=["meta"])

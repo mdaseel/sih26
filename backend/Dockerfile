@@ -42,7 +42,7 @@ USER solargrid
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8000/health || exit 1
+    CMD curl -fsS http://127.0.0.1:8000/ping || exit 1
 
 # One worker by default: the rate limiter keeps its counters in process, so
 # scaling workers multiplies the effective limit until a shared store is added.

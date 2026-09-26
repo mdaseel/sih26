@@ -72,4 +72,4 @@ def test_liveness_probes_are_never_throttled(client, path):
     response = client.get(path)
     assert response.status_code == 200
     if path == "/ping":
-        assert response.text == "pong"
+        assert response.json() == {"status": "ok"}

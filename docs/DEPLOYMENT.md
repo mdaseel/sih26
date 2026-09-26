@@ -152,8 +152,8 @@ must be kept with the code:
 
 ## Monitoring
 
-`GET /ping` returns a constant `pong` response and is the liveness endpoint for
-Render and external uptime monitors. `GET /health` reports whether artifacts
+`GET /ping` returns a constant `{"status":"ok"}` response and is the liveness
+endpoint for Render and external uptime monitors. `GET /health` reports whether artifacts
 are present, whether Supabase is configured, and the rate-limit policy. Neither
 endpoint is rate limited, so a monitor under load sees the truth rather than a
 429.

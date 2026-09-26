@@ -146,9 +146,10 @@ def install_security(app: FastAPI) -> None:
         if _is_cors_preflight(request):
             return await call_next(request)
 
-        # Health must answer even under a flood, so a monitor can still see the
-        # service is alive rather than being throttled into looking dead.
-        if path != "/health":
+        # Liveness probes must answer even under a flood, so monitors can still
+        # see the service is alive rather than being throttled into looking dead.
+        is_liveness_probe = path in {"/health", "/ping"}
+        if not is_liveness_probe:
             key, authenticated = _client_key(request)
             limit = _limit_for(path, authenticated)
             allowed, remaining, retry_after = limiter.check(f"{key}:{limit.requests}", limit)
@@ -169,7 +170,7 @@ def install_security(app: FastAPI) -> None:
 
         response = await call_next(request)
 
-        if path != "/health":
+        if not is_liveness_probe:
             response.headers["X-RateLimit-Limit"] = str(limit.requests)
             response.headers["X-RateLimit-Remaining"] = str(remaining)
 

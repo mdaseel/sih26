@@ -64,8 +64,12 @@ def test_a_real_flood_is_still_limited_and_the_429_survives_cors(client):
     assert "Retry-After" in throttled.headers
 
 
-def test_health_is_never_throttled(client):
+@pytest.mark.parametrize("path", ["/health", "/ping"])
+def test_liveness_probes_are_never_throttled(client, path):
     for _ in range(ANONYMOUS_LIMIT.requests + 5):
         client.get("/api/vendor/summary", headers={"Origin": ORIGIN})
 
-    assert client.get("/health").status_code == 200
+    response = client.get(path)
+    assert response.status_code == 200
+    if path == "/ping":
+        assert response.text == "pong"

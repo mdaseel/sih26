@@ -52,7 +52,7 @@ hosted — Render runs only the apps):
    python backend/scripts/precompute_grid_map.py   # ~90 s, 1000+ power flows
    python backend/seed/seed_scheme_config.py
    ```
-5. Check `https://<backend>/health`, then
+5. Check `https://<backend>/ping` and `https://<backend>/health`, then
    `verify_phase1.py` / `verify_phase12.py` against the live URLs.
 
 Keep one backend instance (free/starter): the rate limiter is per-process, and
@@ -152,9 +152,26 @@ must be kept with the code:
 
 ## Monitoring
 
-`GET /health` reports whether artifacts are present, whether Supabase is
-configured, and the rate-limit policy. It is never rate limited, so a monitor
-under load sees the truth rather than a 429.
+`GET /ping` returns a constant `pong` response and is the liveness endpoint for
+Render and external uptime monitors. `GET /health` reports whether artifacts
+are present, whether Supabase is configured, and the rate-limit policy. Neither
+endpoint is rate limited, so a monitor under load sees the truth rather than a
+429.
+
+### Keeping a free Render service awake
+
+Create an UptimeRobot **HTTP(s)** monitor for each Render web service that must
+stay warm. Use the exact public HTTPS service URL and `/ping` for the backend,
+for example `https://solargrid-backend.onrender.com/ping`; select a 5-minute
+interval and confirm the monitor's request log shows HTTP 200. A monitor aimed
+at the frontend or a preview URL does not ping the backend, and vice versa.
+
+External traffic prevents sleeping only on Render plans that permit it. Render
+health checks do not count as public traffic, so this is why the same internal
+`healthCheckPath` alone cannot keep an idle free service awake. If a service
+still sleeps while UptimeRobot records successful 5-minute checks, confirm its
+current Render plan supports external keep-awake traffic; otherwise use a paid
+always-on instance.
 
 Unhandled errors log a reference and return only that reference to the caller.
 When someone reports a problem, ask for the reference and grep the logs.

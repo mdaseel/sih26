@@ -12,7 +12,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     plan: starterPlus
-    healthCheckPath: /health
+    healthCheckPath: /ping
     envVars:
       - key: APP_ENV
         value: production

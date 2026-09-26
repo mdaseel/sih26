@@ -90,9 +90,9 @@ app.include_router(vendor_portal_router)
 app.include_router(scheme_router)
 
 
-@app.get("/ping", tags=["meta"])
+@app.api_route("/ping", methods=["GET", "HEAD"], tags=["meta"])
 def ping() -> dict[str, str]:
-    """Constant-time liveness probe for hosts and external uptime monitors."""
+    """Constant-time GET/HEAD liveness probe for hosts and uptime monitors."""
     return {"status": "ok"}
 
 

@@ -73,3 +73,10 @@ def test_liveness_probes_are_never_throttled(client, path):
     assert response.status_code == 200
     if path == "/ping":
         assert response.json() == {"status": "ok"}
+
+
+def test_ping_accepts_head(client):
+    response = client.head("/ping")
+
+    assert response.status_code == 200
+    assert response.content == b""

@@ -96,7 +96,7 @@ def ping() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/health", tags=["meta"])
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["meta"])
 def health() -> dict[str, Any]:
     """Liveness plus a report of which subsystems are actually usable."""
     s = get_settings()

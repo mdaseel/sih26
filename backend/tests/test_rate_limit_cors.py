@@ -75,8 +75,9 @@ def test_liveness_probes_are_never_throttled(client, path):
         assert response.json() == {"status": "ok"}
 
 
-def test_ping_accepts_head(client):
-    response = client.head("/ping")
+@pytest.mark.parametrize("path", ["/ping", "/health"])
+def test_liveness_routes_accept_head(client, path):
+    response = client.head(path)
 
     assert response.status_code == 200
     assert response.content == b""

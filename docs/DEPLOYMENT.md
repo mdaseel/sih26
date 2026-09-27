@@ -153,8 +153,9 @@ must be kept with the code:
 ## Monitoring
 
 `GET` and `HEAD` requests to `/ping` return HTTP 200; GET has the constant
-`{"status":"ok"}` response body. Use HEAD when your UptimeRobot plan only
-supports it. `GET /health` reports whether artifacts
+`{"status":"ok"}` response body. `GET` and `HEAD` requests to `/health` also
+return HTTP 200. Use HEAD when your UptimeRobot plan only supports it; GET
+`/health` reports whether artifacts
 are present, whether Supabase is configured, and the rate-limit policy. Neither
 endpoint is rate limited, so a monitor under load sees the truth rather than a
 429.

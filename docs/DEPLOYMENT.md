@@ -165,8 +165,10 @@ endpoint is rate limited, so a monitor under load sees the truth rather than a
 Create an UptimeRobot **HTTP(s)** monitor for each Render web service that must
 stay warm. Use the exact public HTTPS service URL and `/ping` for the backend,
 for example `https://solargrid-backend.onrender.com/ping`; select a 5-minute
-interval and confirm the monitor's request log shows HTTP 200. A monitor aimed
-at the frontend or a preview URL does not ping the backend, and vice versa.
+interval and confirm the monitor's request log shows HTTP 200. The frontend has
+its own lightweight liveness endpoint at `/ping`, for example
+`https://sih26-1-urz4.onrender.com/ping`. A monitor aimed at the frontend or a
+preview URL does not ping the backend, and vice versa.
 
 External traffic prevents sleeping only on Render plans that permit it. Render
 health checks do not count as public traffic, so this is why the same internal

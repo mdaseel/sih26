@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
     cors_origins: str = Field(default="http://localhost:3000", alias="CORS_ORIGINS")
+    uptime_monitor_token: str = Field(default="", alias="UPTIME_MONITOR_TOKEN")
 
     # --- NVIDIA NIM (chatbot) ---
     nvidia_nim_api_key: str = Field(default="", alias="NVIDIA_NIM_API_KEY")
@@ -72,6 +73,7 @@ class Settings(BaseSettings):
         "supabase_anon_key",
         "supabase_service_role_key",
         "cors_origins",
+        "uptime_monitor_token",
         "nvidia_nim_api_key",
         "nvidia_nim_api_key_alt",
         "nvidia_nim_base_url",
@@ -166,6 +168,7 @@ class Settings(BaseSettings):
             "anon_key_set": bool(self.supabase_anon_key),
             "service_role_key_set": bool(self.supabase_service_role_key),
             "database_url_set": bool(self.database_url),
+            "uptime_monitor_token_set": bool(self.uptime_monitor_token),
             "nvidia_configured": self.nvidia_configured,
             "nvidia_base_url": self.nvidia_nim_base_url,
             "nvidia_model": self.nvidia_nim_model,

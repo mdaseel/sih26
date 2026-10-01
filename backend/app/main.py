@@ -7,11 +7,12 @@ while a power flow itself is ~50 ms.
 
 from __future__ import annotations
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
@@ -23,6 +24,7 @@ from app.api.routes_vendors import router as vendors_router
 from app.core import paths
 from app.core.config import get_settings
 from app.core.security import install_security, rate_limit_status
+from app.core.supabase_client import get_service_client
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("solargrid")
@@ -108,3 +110,26 @@ def health() -> dict[str, Any]:
         "data_class": "Prototype • Synthetic Grid Data",
         "rate_limiting": rate_limit_status(),
     }
+
+
+@app.api_route("/health/supabase", methods=["GET", "HEAD"], tags=["meta"])
+def supabase_health(request: Request) -> dict[str, str]:
+    """Verify Supabase with one bounded authenticated read for uptime monitors."""
+    s = get_settings()
+    expected_token = s.uptime_monitor_token
+    supplied_token = request.headers.get("X-Uptime-Token") or request.query_params.get("token", "")
+
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="Supabase uptime monitor is not configured.")
+    if not hmac.compare_digest(supplied_token, expected_token):
+        raise HTTPException(status_code=401, detail="Invalid uptime monitor token.")
+
+    try:
+        # The result is intentionally discarded: this exercises authenticated DB access
+        # without exposing rows or creating persistent data.
+        get_service_client().table("profiles").select("id").limit(1).execute()
+    except Exception as exc:
+        log.warning("Supabase uptime probe failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Supabase is unavailable.") from exc
+
+    return {"status": "ok"}

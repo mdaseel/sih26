@@ -28,6 +28,8 @@ services:
         sync: false
       - key: CORS_ORIGINS
         sync: false # set to https://<frontend>.onrender.com after first deploy, then redeploy
+      - key: UPTIME_MONITOR_TOKEN
+        sync: false # long random secret for /health/supabase monitoring
 
   - type: web
     name: solargrid-frontend

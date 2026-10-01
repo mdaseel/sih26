@@ -11,11 +11,14 @@ manager on purpose, so the lifespan (model + feeder network) never loads.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import get_settings
 from app.core.security import ANONYMOUS_LIMIT, limiter
+from app import main
 from app.main import app
 
 ORIGIN = get_settings().cors_origin_list[0]
@@ -81,3 +84,36 @@ def test_liveness_routes_accept_head(client, path):
 
     assert response.status_code == 200
     assert response.content == b""
+
+
+def test_supabase_health_uses_one_authenticated_bounded_read(client, monkeypatch):
+    calls: list[tuple[str, str, int]] = []
+
+    class ProbeQuery:
+        def select(self, columns: str):
+            calls.append(("select", columns, 0))
+            return self
+
+        def limit(self, count: int):
+            calls.append(("limit", "", count))
+            return self
+
+        def execute(self):
+            calls.append(("execute", "", 0))
+            return SimpleNamespace(data=[])
+
+    class ProbeClient:
+        def table(self, name: str):
+            calls.append(("table", name, 0))
+            return ProbeQuery()
+
+    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(uptime_monitor_token="test-token"))
+    monkeypatch.setattr(main, "get_service_client", lambda: ProbeClient())
+
+    rejected = client.head("/health/supabase")
+    assert rejected.status_code == 401
+
+    response = client.head("/health/supabase?token=test-token")
+    assert response.status_code == 200
+    assert response.content == b""
+    assert calls == [("table", "profiles", 0), ("select", "id", 0), ("limit", "", 1), ("execute", "", 0)]

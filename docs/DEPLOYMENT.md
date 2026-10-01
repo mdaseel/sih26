@@ -177,6 +177,24 @@ still sleeps while UptimeRobot records successful 5-minute checks, confirm its
 current Render plan supports external keep-awake traffic; otherwise use a paid
 always-on instance.
 
+### Supabase keep-alive
+
+`GET` and `HEAD` `/health/supabase` perform one authenticated
+`SELECT id FROM profiles LIMIT 1` through the backend service-role client. The
+result is discarded, so no application data is returned or changed. Set a long
+random `UPTIME_MONITOR_TOKEN` in the Render backend environment, for example:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+For a UptimeRobot plan limited to HEAD requests, create an HTTP(s) monitor with
+the URL `https://sih26-k7j4.onrender.com/health/supabase?token=<UPTIME_MONITOR_TOKEN>`,
+method **HEAD**, expected status **200**, and a **5-minute** interval. Prefer
+the `X-Uptime-Token: <UPTIME_MONITOR_TOKEN>` header instead of the query value
+when the monitor plan supports custom headers. The endpoint remains rate
+limited and returns 401 without the token.
+
 Unhandled errors log a reference and return only that reference to the caller.
 When someone reports a problem, ask for the reference and grep the logs.
 
